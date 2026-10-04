@@ -1,0 +1,878 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Immunaut Program</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0e19;
+    --panel: rgba(13, 19, 34, 0.86);
+    --line: rgba(120, 170, 255, 0.18);
+    --text: #e6edf8;
+    --muted: #8b9ab5;
+    --accent: #4fd1ff;
+    --good: #5be38f;
+    --warn: #ffb347;
+    --bad: #ff5d6c;
+    --sci: #c792ff;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font: 14px/1.45 Inter, system-ui, sans-serif; }
+  canvas#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  .hidden { display: none !important; }
+  h1, h2, h3, .brand, .display { font-family: "Exo 2", Inter, sans-serif; letter-spacing: .02em; }
+
+  /* overlay layers let clicks fall through to the 3D view except on panels */
+  .screen { position: fixed; inset: 56px 0 0 0; pointer-events: none; }
+  .panel { pointer-events: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; backdrop-filter: blur(8px); }
+
+  #topbar { position: fixed; top: 0; left: 0; right: 0; height: 56px; display: flex; align-items: center; gap: 16px; padding: 0 18px; background: linear-gradient(#0a0e19ee, #0a0e1900); z-index: 5; }
+  .brand { font-weight: 800; font-size: 20px; color: var(--accent); }
+  .brand span { color: var(--text); font-weight: 500; margin-left: 6px; }
+  #mission-tag { color: var(--muted); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sci { color: var(--sci); font-weight: 600; white-space: nowrap; }
+
+  #labels div { position: fixed; transform: translate(-50%, -50%); font: 600 11px Inter, sans-serif; letter-spacing: .08em; text-transform: uppercase; color: #cfe3ff; background: #0a0e19aa; border: 1px solid var(--line); padding: 3px 8px; border-radius: 99px; pointer-events: none; white-space: nowrap; }
+
+  /* menu */
+  #menu { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px; }
+  #menu .panel { width: min(760px, 100%); padding: 24px; max-height: 100%; overflow: auto; }
+  #menu h1 { margin: 0 0 4px; font-size: 30px; }
+  #menu p.lead { margin: 0 0 18px; color: var(--muted); }
+  #mission-list { display: grid; gap: 10px; }
+  .mission { display: grid; grid-template-columns: 1fr auto; gap: 4px 16px; text-align: left; padding: 14px 16px; border-radius: 12px; border: 1px solid var(--line); background: #ffffff06; }
+  .mission:hover:not(:disabled) { border-color: var(--accent); background: #4fd1ff10; }
+  .mission:disabled { opacity: .45; cursor: not-allowed; }
+  .mission .name { font: 700 17px "Exo 2", sans-serif; }
+  .mission .stars { color: var(--warn); font-size: 16px; letter-spacing: 2px; }
+  .mission .blurb { grid-column: 1 / -1; color: var(--muted); }
+  .mission .tags { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; }
+  .tag { font-size: 11px; padding: 2px 8px; border-radius: 99px; background: #ffffff0d; color: #b9c7de; }
+  .tag.hot { background: #ff5d6c22; color: #ff9aa4; }
+  .fine { color: var(--muted); font-size: 12px; margin: 16px 0 0; }
+
+  /* lab */
+  #parts { position: absolute; left: 16px; top: 8px; bottom: 16px; width: 330px; padding: 14px; overflow: auto; }
+  #parts h3 { margin: 14px 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); }
+  #parts h3:first-child { margin-top: 0; }
+  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .card { text-align: left; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: #ffffff05; min-height: 52px; }
+  .card:hover { border-color: #4fd1ff88; }
+  .card.on { border-color: var(--accent); background: #4fd1ff18; box-shadow: inset 0 0 0 1px var(--accent); }
+  .card.locked { opacity: .6; }
+  .card.locked.afford { opacity: 1; border-style: dashed; border-color: var(--sci); }
+  .card b { display: block; font-size: 13px; }
+  .card small { color: var(--muted); font-size: 11px; }
+  .card.locked small { color: var(--sci); }
+  .doses { display: flex; gap: 6px; }
+  .doses .card { flex: 1; text-align: center; min-height: 0; }
+
+  #brief { position: absolute; right: 16px; top: 8px; bottom: 16px; width: 320px; padding: 16px; overflow: auto; display: flex; flex-direction: column; gap: 12px; }
+  #brief h2 { margin: 0; font-size: 20px; }
+  #brief .blurb { color: var(--muted); margin: 0; }
+  .conds { display: grid; gap: 4px; font-size: 13px; }
+  .conds div { display: flex; justify-content: space-between; border-bottom: 1px dashed #ffffff14; padding: 3px 0; }
+  .conds span:last-child { font-weight: 600; }
+  .meter { margin: 2px 0 8px; }
+  .meter .row { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+  .meter .row b { color: var(--text); font-weight: 600; }
+  .bar { position: relative; height: 8px; border-radius: 99px; background: #ffffff10; overflow: visible; margin-top: 4px; }
+  .bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 99px; background: var(--accent); transition: width .25s, background .25s; }
+  .bar u { position: absolute; top: -3px; bottom: -3px; width: 2px; background: #fff; border-radius: 2px; }
+  .primary { padding: 13px; border-radius: 12px; border: 0; background: linear-gradient(90deg, #2bb6ff, #5be38f); color: #04111c; font: 800 16px "Exo 2", sans-serif; letter-spacing: .04em; }
+  .primary:disabled { background: #3a4458; color: #8b9ab5; cursor: not-allowed; }
+  .ghost { padding: 9px; border-radius: 10px; border: 1px solid var(--line); background: transparent; color: var(--muted); }
+  .ghost:hover { color: var(--text); border-color: #4fd1ff88; }
+  #part-info { position: absolute; left: 50%; transform: translateX(-50%); bottom: 16px; width: min(460px, calc(100% - 720px)); padding: 12px 14px; font-size: 13px; color: #c9d5ea; }
+  #part-info b { color: var(--text); }
+
+  /* trial */
+  #trial-top { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 14px; padding: 8px 14px; white-space: nowrap; }
+  #trial-top .day { font: 700 22px "Exo 2", sans-serif; min-width: 120px; }
+  #trial-top .day small { font-size: 13px; color: var(--muted); font-weight: 500; }
+  .warp { display: flex; gap: 4px; }
+  .warp button { padding: 4px 9px; border-radius: 8px; border: 1px solid var(--line); background: transparent; font-weight: 600; font-size: 12px; }
+  .warp button.on { background: var(--accent); color: #04111c; border-color: var(--accent); }
+  #log { position: absolute; left: 16px; top: 8px; width: 310px; max-height: calc(100% - 24px); padding: 12px 14px; overflow: auto; font-size: 13px; }
+  #log h3, #vitals h3 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); }
+  #log p { margin: 0 0 7px; animation: fadein .4s; }
+  #log p b { color: var(--accent); margin-right: 6px; }
+  #log p.warn b, #log p.warn { color: var(--warn); }
+  #log p.bad b, #log p.bad { color: var(--bad); }
+  #log p.good b, #log p.good { color: var(--good); }
+  @keyframes fadein { from { opacity: 0; transform: translateY(4px); } }
+  #vitals { position: absolute; right: 16px; bottom: 16px; width: 330px; padding: 12px 14px; }
+  #chart { width: 100%; height: 120px; display: block; }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; color: var(--muted); margin-top: 6px; }
+  .legend i { display: inline-block; width: 10px; height: 3px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+  .temp { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+  .temp b { font: 700 18px "Exo 2", sans-serif; }
+
+  /* result */
+  .modal { position: fixed; inset: 0; display: grid; place-items: center; background: #05080fbb; z-index: 10; padding: 16px; }
+  .modal .card2 { width: min(520px, 100%); max-height: 100%; overflow: auto; padding: 24px; border-radius: 16px; background: #0f1628; border: 1px solid var(--line); }
+  .modal h2 { margin: 0 0 4px; font-size: 28px; }
+  .modal .stars { font-size: 26px; color: var(--warn); letter-spacing: 4px; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 16px 0; }
+  .stats div { background: #ffffff08; border-radius: 10px; padding: 10px; }
+  .stats small { display: block; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+  .stats b { font: 700 20px "Exo 2", sans-serif; }
+  .stats em { font-style: normal; color: var(--muted); font-size: 12px; }
+  .notes { margin: 0 0 16px; padding-left: 18px; color: #c9d5ea; }
+  .notes li { margin-bottom: 6px; }
+  .btns { display: flex; gap: 8px; }
+  .btns button { flex: 1; }
+  .ok { color: var(--good); } .no { color: var(--bad); }
+
+  @media (max-width: 1100px) {
+    #part-info { display: none; }
+  }
+  @media (max-width: 760px) {
+    .screen { inset: 52px 0 0 0; }
+    #topbar { height: 52px; padding: 0 12px; }
+    #mission-tag { display: none; }
+    #parts { left: 8px; right: 8px; width: auto; top: auto; bottom: 8px; height: 38%; }
+    #brief { left: 8px; right: 8px; width: auto; top: 4px; bottom: auto; max-height: 34%; }
+    #log { left: 8px; right: 8px; width: auto; top: auto; bottom: 8px; max-height: 28%; }
+    #vitals { left: 8px; right: 8px; width: auto; top: 64px; bottom: auto; }
+    #chart { height: 70px; }
+    #trial-top { top: 4px; gap: 8px; padding: 6px 10px; }
+    #trial-top .day { min-width: 0; font-size: 18px; }
+    .stats { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<canvas id="scene"></canvas>
+<div id="labels"></div>
+
+<header id="topbar">
+  <div class="brand">IMMUNAUT<span>PROGRAM</span></div>
+  <div id="mission-tag"></div>
+  <div class="sci">⚗ <b id="sci">0</b> science</div>
+</header>
+
+<section id="menu" class="screen">
+  <div class="panel">
+    <h1>Mission Control</h1>
+    <p class="lead">Design a vaccine from parts, run a trial and watch the immune system respond. When a trial fails, the debrief tells you why.</p>
+    <div id="mission-list"></div>
+    <p class="fine">This is a game, not medical advice. The immunology is heavily simplified, and every pathogen is made up.</p>
+  </div>
+</section>
+
+<section id="lab" class="screen hidden">
+  <aside class="panel" id="parts"></aside>
+  <aside class="panel" id="brief"></aside>
+  <div class="panel" id="part-info"></div>
+</section>
+
+<section id="trial" class="screen hidden">
+  <div class="panel" id="trial-top">
+    <div class="day">Day <span id="day">0</span> <small>/ <span id="day-end">0</span></small></div>
+    <div class="warp" id="warp"></div>
+    <button class="ghost" id="skip">Skip ⏭</button>
+  </div>
+  <div class="panel" id="log"><h3>Trial log</h3><div id="log-items"></div></div>
+  <div class="panel" id="vitals">
+    <div class="temp"><h3>Volunteer vitals</h3><b id="temp">37.0°C</b></div>
+    <canvas id="chart" width="600" height="220"></canvas>
+    <div class="legend">
+      <span><i style="background:#4fd1ff"></i>Antibodies</span>
+      <span><i style="background:#ffa94d"></i>T cells</span>
+      <span><i style="background:#ff5d6c"></i>Side effects</span>
+      <span><i style="background:#e05cff"></i>Virus</span>
+    </div>
+  </div>
+</section>
+
+<div id="result" class="modal hidden"><div class="card2" id="result-body"></div></div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// MODEL-START
+const PARTS = {
+  carrier: [
+    { id: 'subunit', name: 'Protein Subunit', desc: 'Purified pathogen proteins. Very stable and gentle, but a weak trigger on its own.', delivery: .6, potency: .45, stab: .9, reacto: .2, tcell: .2, memory: .3, cost: 15, unlock: 0, color: 0x7fb2ff },
+    { id: 'inactivated', name: 'Inactivated Virus', desc: 'The whole pathogen, chemically killed. Cheap, sturdy and dependable.', delivery: .7, potency: .55, stab: .85, reacto: .35, tcell: .3, memory: .4, cost: 10, unlock: 0, color: 0x9aa0ad },
+    { id: 'vector', name: 'Viral Vector', desc: 'A harmless virus carries the antigen gene into your cells. Strong T-cell response and travels well.', delivery: .85, potency: .8, stab: .7, reacto: .6, tcell: .85, memory: .45, cost: 25, unlock: 25, color: 0x36c9b4 },
+    { id: 'mrna', name: 'mRNA Nanoparticle', desc: 'A lipid bubble carrying mRNA instructions. Very potent, but fragile: it needs a cold chain.', delivery: .9, potency: .9, stab: .3, reacto: .55, tcell: .7, memory: .35, cost: 30, unlock: 30, color: 0xffd166 },
+    { id: 'live', name: 'Live Attenuated', desc: 'A weakened live pathogen. The strongest and longest-lasting immunity, with the roughest side effects.', delivery: .95, potency: 1, stab: .45, reacto: .8, tcell: .9, memory: .7, cost: 20, unlock: 45, color: 0x6ee07a },
+  ],
+  antigen: [
+    { id: 'spike', name: 'Surface Spike', desc: 'The protein the pathogen uses to break into cells. Gives the strongest response, unless the strain has mutated.', immuno: 1, escapeK: .75, cost: 5, unlock: 0 },
+    { id: 'mix', name: 'Antigen Mix', desc: 'Several pathogen proteins at once. Broader coverage, slightly weaker focus.', immuno: .85, escapeK: .3, cost: 4, unlock: 0 },
+    { id: 'core', name: 'Conserved Core', desc: 'An internal region that barely changes between strains. Weaker, but mutation can\'t dodge it.', immuno: .72, escapeK: 0, cost: 8, unlock: 30 },
+  ],
+  adjuvant: [
+    { id: 'none', name: 'None', desc: 'No adjuvant. Fewest side effects.', ab: 0, t: 0, mem: 0, reacto: 0, cost: 0, unlock: 0 },
+    { id: 'alum', name: 'Alum', desc: 'Aluminium salts that hold antigen at the injection site. A steady antibody boost.', ab: .25, t: 0, mem: .05, reacto: .1, cost: 4, unlock: 0 },
+    { id: 'squalene', name: 'Squalene Emulsion', desc: 'An oil-in-water emulsion. A big antibody boost with more soreness.', ab: .45, t: .1, mem: .1, reacto: .18, cost: 8, unlock: 20 },
+    { id: 'tlr', name: 'TLR Agonist', desc: 'Sets off danger sensors in immune cells. Strong T cells and memory, more fever.', ab: .2, t: .45, mem: .18, reacto: .22, cost: 10, unlock: 35 },
+  ],
+  route: [
+    { id: 'im', name: 'Injection', desc: 'A shot in the upper arm. The reliable standard.', delivery: 1, reacto: 0, mucosal: 0, cost: 0, unlock: 0 },
+    { id: 'nasal', name: 'Nasal Spray', desc: 'Builds a defensive layer in the nose and airways. Big bonus against respiratory pathogens, slightly lower delivery.', delivery: .85, reacto: -.05, mucosal: .15, cost: 6, unlock: 25 },
+  ],
+};
+
+const MISSIONS = [
+  { id: 'm1', name: 'First Shot', pathogen: 'Rhino-7', blurb: 'A mild cold virus is tearing through a college dorm. Protect at least half of the volunteers.', drift: 0, cold: true, frailty: 1, maxSide: .6, minProtect: .5, challengeDay: 45, resp: true, budget: 60, reward: 30 },
+  { id: 'm2', name: 'Flu Season', pathogen: 'Influx-B', blurb: 'Influx-B mutated over the summer, so last year\'s spike protein is a poor match now.', drift: .6, cold: true, frailty: 1, maxSide: .55, minProtect: .65, challengeDay: 60, resp: true, budget: 70, reward: 35 },
+  { id: 'm3', name: 'Off the Grid', pathogen: 'Marsh Fever', blurb: 'An outbreak in a remote region with no refrigeration. Fragile vaccines will spoil in transit.', drift: .15, cold: false, frailty: 1, maxSide: .6, minProtect: .65, challengeDay: 50, resp: false, budget: 55, reward: 40 },
+  { id: 'm4', name: 'Care Home', pathogen: 'Influx-C', blurb: 'Elderly residents need protection that lasts all winter, without harsh side effects.', drift: .2, cold: true, frailty: 1.25, maxSide: .5, minProtect: .65, challengeDay: 120, resp: true, budget: 90, reward: 45 },
+  { id: 'm5', name: 'Pathogen X', pathogen: 'Pathogen X', blurb: 'A brand-new virus with a fast-mutating spike. The whole world is watching.', drift: .45, cold: true, frailty: 1.1, maxSide: .55, minProtect: .85, challengeDay: 75, resp: true, budget: 110, reward: 60 },
+];
+
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const pct = v => Math.round(v * 100) + '%';
+const DOSE_GAP = 14;
+const part = (kind, id) => PARTS[kind].find(p => p.id === id);
+function rise(x, peak, floor, decay) {
+  if (x <= 0) return 0;
+  if (x < peak) return Math.pow(x / peak, 1.5);
+  return floor + (1 - floor) * Math.exp(-(x - peak) / decay);
+}
+function pulse(x, w) { if (x <= 0) return 0; const q = x / w; return q * Math.exp(1 - q); }
+
+function designCost(d) {
+  const c = part('carrier', d.carrier), a = part('antigen', d.antigen), j = part('adjuvant', d.adjuvant), r = part('route', d.route);
+  return (c.cost + a.cost + j.cost + r.cost) * d.doses;
+}
+function reactoOf(d) {
+  const c = part('carrier', d.carrier), j = part('adjuvant', d.adjuvant), r = part('route', d.route);
+  return Math.max(0, c.reacto * .6 + j.reacto + r.reacto + .08 * (d.doses - 1));
+}
+
+function simulate(d, m) {
+  const c = part('carrier', d.carrier), a = part('antigen', d.antigen), j = part('adjuvant', d.adjuvant), r = part('route', d.route);
+  const spoil = m.cold ? 0 : (1 - c.stab) * .9;
+  const delivered = c.delivery * r.delivery * (1 - spoil);
+  const escape = m.drift * a.escapeK;
+  const match = a.immuno * (1 - escape);
+  const abBase = delivered * c.potency * match * (1 + j.ab);
+  const tBase = delivered * c.tcell * match * (1 + j.t);
+  const memory = Math.min(.95, c.memory + .12 * (d.doses - 1) + j.mem);
+  const doseDays = [...Array(d.doses)].map((_, k) => k * DOSE_GAP);
+  const boost = k => 1 + .5 * k;
+  const ab = t => Math.max(0, ...doseDays.map((t0, k) => abBase * boost(k) * rise(t - t0, 14, memory * .6, 30)));
+  const tc = t => Math.max(0, ...doseDays.map((t0, k) => tBase * boost(k) * rise(t - t0, 10, memory * .7, 35)));
+  const antigen = t => doseDays.reduce((s, t0) => s + (t > t0 ? delivered * Math.exp(-(t - t0) / 3) : 0), 0);
+  const side = reactoOf(d) * m.frailty;
+  const fever = t => doseDays.reduce((s, t0) => Math.max(s, side * pulse(t - t0, 1)), 0);
+  const ch = m.challengeDay;
+  const abC = ab(ch), tC = tc(ch);
+  const mucosal = m.resp ? r.mucosal : 0;
+  const protection = clamp(1 - Math.exp(-2.5 * (abC + .5 * tC)) + mucosal, 0, .99);
+  const virusPeak = .12 + .88 * (1 - protection);
+  const virus = t => virusPeak * pulse(t - ch, 2 + 4 * (1 - protection));
+  const cost = designCost(d);
+  const halted = side > m.maxSide;
+  const success = !halted && protection >= m.minProtect;
+  const peakAb = abBase * boost(d.doses - 1);
+
+  const notes = [];
+  if (halted) {
+    notes.push(`The safety board halted the trial after the first dose: reaction score ${pct(side)}, limit ${pct(m.maxSide)}.`);
+    if (m.frailty > 1) notes.push('This group is frail, so side effects hit harder than usual.');
+    notes.push('Try a gentler carrier or adjuvant, or fewer doses.');
+  } else if (!success) {
+    if (spoil > .2) notes.push(`${pct(spoil)} of doses spoiled without refrigeration. A more stable carrier would survive the trip.`);
+    if (escape > .15) notes.push(`The strain has drifted, so your antigen only matched ${pct(1 - escape)} as well as it should. A conserved target holds up against mutation.`);
+    if (abC < peakAb * .5) notes.push(`Immunity had faded by the exposure on day ${ch}. Booster doses or memory-building parts help it last.`);
+    if (abBase < .3) notes.push('The immune response was weak from the start. A stronger carrier or an adjuvant would boost it.');
+    if (m.resp && r.id === 'im' && PARTS.route[1] && notes.length < 3) notes.push('This is a respiratory pathogen. Defenses in the airways could help.');
+    notes.push(`Protection was ${pct(protection)}, and you needed ${pct(m.minProtect)}.`);
+  } else {
+    notes.push(`${pct(protection)} of volunteers stayed healthy after exposure to ${m.pathogen}.`);
+  }
+  const bonusProtect = protection >= Math.min(.97, m.minProtect + .15);
+  const bonusCheap = cost <= m.budget * .75;
+  const stars = success ? 1 + (bonusProtect ? 1 : 0) + (bonusCheap ? 1 : 0) : 0;
+  if (success && !bonusProtect) notes.push(`★ Bonus: reach ${pct(Math.min(.97, m.minProtect + .15))} protection.`);
+  if (success && !bonusCheap) notes.push(`★ Bonus: spend $${Math.floor(m.budget * .75)}k or less.`);
+
+  return { spoil, delivered, escape, abBase, tBase, memory, doseDays, ab, tc, antigen, fever, virus, side,
+    protection, cost, halted, success, stars, notes, peakAb, end: halted ? 2.5 : ch + 14 };
+}
+// MODEL-END
+
+// ---------- save ----------
+const SAVE_KEY = 'immunaut-save-v1';
+let save = { science: 0, unlocked: [], missions: {} };
+try { const s = JSON.parse(localStorage.getItem(SAVE_KEY)); if (s && typeof s.science === 'number') save = s; } catch {}
+const persist = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch {} };
+const isUnlocked = p => p.unlock === 0 || save.unlocked.includes(p.id);
+
+// ---------- 3D setup ----------
+const canvas = document.getElementById('scene');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const scene = new THREE.Scene();
+const BG = new THREE.Color(0x0a0e19), FEVER_BG = new THREE.Color(0x3a0d16);
+scene.background = BG.clone();
+scene.fog = new THREE.FogExp2(0x0a0e19, 0.007);
+const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 1000);
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true;
+controls.maxDistance = 140;
+controls.minDistance = 4;
+
+scene.add(new THREE.HemisphereLight(0xbfd9ff, 0x1a1020, 1.1));
+const sun = new THREE.DirectionalLight(0xffffff, 1.4); sun.position.set(20, 40, 25); scene.add(sun);
+const rim = new THREE.PointLight(0x4fd1ff, 60, 120); rim.position.set(-20, 10, -20); scene.add(rim);
+
+function resize() {
+  const w = innerWidth, h = innerHeight;
+  renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize); resize();
+
+// ---------- body world ----------
+const world = new THREE.Group(); scene.add(world);
+const INJ = new THREE.Vector3(-30, 0, 0), NODE = new THREE.Vector3(0, 0, 0), SITE = new THREE.Vector3(30, 0, 0);
+const curve = new THREE.CatmullRomCurve3([
+  new THREE.Vector3(-30, 0, 0), new THREE.Vector3(-16, 5, -7), new THREE.Vector3(0, 1, -1),
+  new THREE.Vector3(16, -5, -7), new THREE.Vector3(30, 0, 0), new THREE.Vector3(16, 5, 7),
+  new THREE.Vector3(0, -1, 1), new THREE.Vector3(-16, -5, 7),
+], true);
+const vessel = new THREE.Mesh(new THREE.TubeGeometry(curve, 300, 1.7, 16, true),
+  new THREE.MeshStandardMaterial({ color: 0xff4d6d, transparent: true, opacity: .13, side: THREE.DoubleSide, depthWrite: false, emissive: 0x401020 }));
+world.add(vessel);
+
+// injection site: muscle fibers + syringe
+const muscle = new THREE.Group(); muscle.position.copy(INJ); world.add(muscle);
+const fiberMat = new THREE.MeshStandardMaterial({ color: 0xb8404f, roughness: .7, transparent: true, opacity: .55 });
+for (let i = 0; i < 9; i++) {
+  const f = new THREE.Mesh(new THREE.CapsuleGeometry(1, 9, 4, 12), fiberMat);
+  f.rotation.z = Math.PI / 2; f.position.set((Math.random() - .5) * 2, -4 + (i % 3) * 2.1 - 1, -2.1 + Math.floor(i / 3) * 2.1);
+  muscle.add(f);
+}
+const syringe = new THREE.Group();
+const barrel = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 7, 24), new THREE.MeshStandardMaterial({ color: 0xdff4ff, transparent: true, opacity: .45, roughness: .1 }));
+const liquid = new THREE.Mesh(new THREE.CylinderGeometry(.85, .85, 5, 24), new THREE.MeshStandardMaterial({ color: 0x4fd1ff, emissive: 0x1a6080 }));
+liquid.position.y = -.5;
+const needle = new THREE.Mesh(new THREE.CylinderGeometry(.08, .08, 4, 8), new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: .9, roughness: .2 }));
+needle.position.y = -5.5;
+const plunger = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, .3, 24), new THREE.MeshStandardMaterial({ color: 0x8b9ab5 }));
+plunger.position.y = 3.7;
+syringe.add(barrel, liquid, needle, plunger);
+syringe.position.set(INJ.x, 14, INJ.z); world.add(syringe);
+
+// lymph node
+const node = new THREE.Group(); node.position.copy(NODE); world.add(node);
+const nodeShell = new THREE.Mesh(new THREE.SphereGeometry(7, 48, 32), new THREE.MeshStandardMaterial({ color: 0x46d39a, transparent: true, opacity: .12, depthWrite: false, emissive: 0x0d3a28 }));
+nodeShell.scale.set(1.35, .9, 1); node.add(nodeShell);
+const nodeWire = new THREE.Mesh(new THREE.IcosahedronGeometry(7.05, 2), new THREE.MeshBasicMaterial({ color: 0x46d39a, wireframe: true, transparent: true, opacity: .12 }));
+nodeWire.scale.copy(nodeShell.scale); node.add(nodeWire);
+
+// infection site (lung-ish cluster)
+const site = new THREE.Group(); site.position.copy(SITE); world.add(site);
+const siteMat = new THREE.MeshStandardMaterial({ color: 0xff9eb5, transparent: true, opacity: .35, roughness: .6, depthWrite: false });
+for (let i = 0; i < 22; i++) {
+  const b = new THREE.Mesh(new THREE.SphereGeometry(1.2 + Math.random() * 1.2, 20, 14), siteMat);
+  b.position.set((Math.random() - .5) * 9, (Math.random() - .5) * 7, (Math.random() - .5) * 9);
+  site.add(b);
+}
+
+// labels
+const labelsEl = document.getElementById('labels');
+const labels = [
+  { pos: new THREE.Vector3(-30, 9, 0), text: 'Injection site' },
+  { pos: new THREE.Vector3(0, 8.5, 0), text: 'Lymph node' },
+  { pos: new THREE.Vector3(30, 7, 0), text: 'Lungs', id: 'site' },
+].map(l => { const el = document.createElement('div'); el.textContent = l.text; labelsEl.appendChild(el); return { ...l, el }; });
+const tmpV = new THREE.Vector3();
+function updateLabels(show) {
+  for (const l of labels) {
+    if (!show) { l.el.style.display = 'none'; continue; }
+    tmpV.copy(l.pos).project(camera);
+    const vis = tmpV.z < 1;
+    l.el.style.display = vis ? '' : 'none';
+    l.el.style.left = ((tmpV.x + 1) / 2 * innerWidth) + 'px';
+    l.el.style.top = ((1 - tmpV.y) / 2 * innerHeight) + 'px';
+  }
+}
+
+// ---------- entity pools ----------
+// Each pool keeps a fixed set of meshes and grows/shrinks the visible count toward a target.
+class Pool {
+  constructor(max, make, init, step) {
+    this.items = []; this.init = init; this.step = step;
+    for (let i = 0; i < max; i++) {
+      const mesh = make(i); mesh.visible = false; world.add(mesh);
+      this.items.push({ mesh, i, active: false, s: 0, base: mesh.scale.x });
+    }
+  }
+  setTarget(n) {
+    n = Math.round(clamp(n, 0, this.items.length));
+    let active = this.items.filter(it => it.active).length;
+    for (const it of this.items) {
+      if (active < n && !it.active && it.s < .05) { it.active = true; this.init(it); active++; }
+    }
+    for (let k = this.items.length - 1; k >= 0 && active > n; k--) {
+      const it = this.items[k]; if (it.active) { it.active = false; active--; }
+    }
+  }
+  update(dt, days, t) {
+    for (const it of this.items) {
+      it.s += ((it.active ? 1 : 0) - it.s) * Math.min(1, dt * 5);
+      it.mesh.visible = it.s > .03;
+      if (!it.mesh.visible) continue;
+      it.mesh.scale.setScalar(it.s * it.base);
+      this.step(it, dt, days, t);
+    }
+  }
+  clear() { for (const it of this.items) { it.active = false; it.s = 0; it.mesh.visible = false; } }
+}
+const rnd = (a, b) => a + Math.random() * (b - a);
+const randIn = r => new THREE.Vector3(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1)).normalize().multiplyScalar(Math.cbrt(Math.random()) * r);
+
+const dcGeo = new THREE.OctahedronGeometry(.9, 0), dcMat = new THREE.MeshStandardMaterial({ color: 0x9cff6b, emissive: 0x2a5a10, flatShading: true });
+const dcs = new Pool(14, () => { const g = new THREE.Mesh(dcGeo, dcMat); g.scale.setScalar(1); return g; },
+  it => { it.u = rnd(0, .02); it.off = randIn(1.2); it.ang = rnd(0, 6.28); },
+  (it, dt, days) => {
+    if (it.u < .245) { it.u = Math.min(.245, it.u + days * .05); it.mesh.position.copy(curve.getPointAt(it.u)).add(it.off); }
+    else { it.ang += dt * .6; it.mesh.position.set(NODE.x + Math.cos(it.ang + it.i) * 6, NODE.y + Math.sin(it.ang * 1.3 + it.i) * 2.5, NODE.z + Math.sin(it.ang + it.i) * 4.5); }
+    it.mesh.rotation.x += dt; it.mesh.rotation.y += dt * 1.4;
+  });
+
+const bGeo = new THREE.SphereGeometry(.7, 16, 12), bMat = new THREE.MeshStandardMaterial({ color: 0x5aa8ff, emissive: 0x0d2850, roughness: .4 });
+const bcells = new Pool(40, () => new THREE.Mesh(bGeo, bMat),
+  it => { it.home = randIn(5); it.home.x *= 1.3; it.home.y *= .8; it.ph = rnd(0, 6.28); },
+  (it, dt, days, t) => { it.mesh.position.set(it.home.x + Math.sin(t * .8 + it.ph) * .4, it.home.y + Math.cos(t * .9 + it.ph) * .4, it.home.z); });
+
+const tGeo = new THREE.SphereGeometry(.6, 16, 12), tMat = new THREE.MeshStandardMaterial({ color: 0xffa94d, emissive: 0x4a2400, roughness: .4 });
+const tcells = new Pool(30, () => new THREE.Mesh(tGeo, tMat),
+  it => { it.home = randIn(5); it.home.x *= 1.3; it.home.y *= .8; it.ph = rnd(0, 6.28); it.u = .25; },
+  (it, dt, days, t) => {
+    const hunting = trial.active && trial.t > trial.mission.challengeDay && it.i % 2 === 0;
+    if (hunting) {
+      it.u = Math.min(.5, it.u + days * .08);
+      const p = it.u < .5 ? curve.getPointAt(it.u) : SITE.clone().add(new THREE.Vector3(Math.sin(t + it.ph) * 4, Math.cos(t * 1.1 + it.ph) * 3, Math.cos(t + it.ph) * 4));
+      it.mesh.position.lerp(p, Math.min(1, dt * 4));
+    } else {
+      it.mesh.position.set(it.home.x + Math.cos(t * .7 + it.ph) * .5, it.home.y + Math.sin(t + it.ph) * .5, it.home.z);
+    }
+  });
+
+const virusGeo = new THREE.IcosahedronGeometry(.8, 0), virusMat = new THREE.MeshStandardMaterial({ color: 0xe05cff, emissive: 0x5a0a60, flatShading: true });
+const spikeGeo = new THREE.ConeGeometry(.15, .7, 6);
+function makeVirus() {
+  const g = new THREE.Mesh(virusGeo, virusMat);
+  for (const n of fib(12)) { const s = new THREE.Mesh(spikeGeo, virusMat); s.position.copy(n).multiplyScalar(.85); s.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), n); g.add(s); }
+  return g;
+}
+const viruses = new Pool(60, makeVirus,
+  it => { it.p = SITE.clone().add(randIn(5)); it.ph = rnd(0, 6.28); },
+  (it, dt, days, t) => { it.mesh.position.set(it.p.x + Math.sin(t * 2 + it.ph) * .3, it.p.y + Math.cos(t * 1.7 + it.ph) * .3, it.p.z); it.mesh.rotation.y += dt * 2; });
+
+// antibodies: points flowing through the blood vessel
+const AB_MAX = 1400;
+const abGeo = new THREE.BufferGeometry();
+const abPos = new Float32Array(AB_MAX * 3);
+abGeo.setAttribute('position', new THREE.BufferAttribute(abPos, 3));
+const abData = [...Array(AB_MAX)].map(() => ({ u: Math.random(), off: randIn(1.4), sp: rnd(.015, .04) }));
+const abPoints = new THREE.Points(abGeo, new THREE.PointsMaterial({ color: 0x4fd1ff, size: .35, transparent: true, opacity: .9, depthWrite: false, blending: THREE.AdditiveBlending }));
+abGeo.setDrawRange(0, 0); world.add(abPoints);
+function updateAntibodies(dt, level) {
+  const n = Math.round(clamp(level, 0, 1) * AB_MAX);
+  abGeo.setDrawRange(0, n);
+  for (let k = 0; k < n; k++) {
+    const d = abData[k]; d.u = (d.u + d.sp * dt) % 1;
+    const p = curve.getPointAt(d.u);
+    abPos[k * 3] = p.x + d.off.x; abPos[k * 3 + 1] = p.y + d.off.y; abPos[k * 3 + 2] = p.z + d.off.z;
+  }
+  abGeo.attributes.position.needsUpdate = true;
+}
+
+// vaccine particles injected per dose
+const shots = [];
+const shotGeo = new THREE.SphereGeometry(.4, 12, 10);
+function injectBurst(sim, carrier) {
+  const mat = new THREE.MeshStandardMaterial({ color: carrier.color, emissive: carrier.color, emissiveIntensity: .5, transparent: true });
+  for (let k = 0; k < 40; k++) {
+    const m = new THREE.Mesh(shotGeo, mat.clone());
+    const reachRate = sim.delivered / Math.max(.01, 1 - sim.spoil);
+    const fate = Math.random() < sim.spoil ? 'spoil' : Math.random() > reachRate ? 'lost' : 'ok';
+    m.position.copy(INJ).add(randIn(1.5));
+    world.add(m);
+    shots.push({ m, fate, u: 0, delay: k * .04, off: randIn(1.2), life: 1 });
+  }
+  syringe.userData.push = 1;
+}
+function updateShots(dt, days) {
+  for (let k = shots.length - 1; k >= 0; k--) {
+    const s = shots[k];
+    if (s.delay > 0) { s.delay -= days; continue; }
+    s.u += days * .085;
+    if (s.fate === 'spoil' && s.u > .05) { s.m.material.color.lerp(new THREE.Color(0x444a55), .1); s.m.material.emissiveIntensity *= .9; s.life -= days * .6; }
+    if (s.fate === 'lost' && s.u > .12) s.life -= days * .8;
+    if (s.u >= .25) s.life -= days * 2;
+    s.m.position.copy(curve.getPointAt(Math.min(s.u, .25))).add(s.off);
+    s.m.material.opacity = clamp(s.life, 0, 1);
+    if (s.life <= 0) { world.remove(s.m); s.m.material.dispose(); shots.splice(k, 1); }
+  }
+}
+function clearShots() { for (const s of shots) { world.remove(s.m); s.m.material.dispose(); } shots.length = 0; }
+
+// ---------- lab preview ----------
+const LAB = new THREE.Vector3(0, 300, 0);
+const lab = new THREE.Group(); lab.position.copy(LAB); scene.add(lab);
+const labLight = new THREE.PointLight(0xffffff, 80, 40); labLight.position.set(5, 8, 8); lab.add(labLight);
+const pad = new THREE.Mesh(new THREE.RingGeometry(3.6, 4, 64), new THREE.MeshBasicMaterial({ color: 0x4fd1ff, transparent: true, opacity: .5, side: THREE.DoubleSide }));
+pad.rotation.x = -Math.PI / 2; pad.position.y = -3.4; lab.add(pad);
+const grid = new THREE.GridHelper(40, 40, 0x1f3550, 0x152338); grid.position.y = -3.5; lab.add(grid);
+const specimen = new THREE.Group(); lab.add(specimen);
+
+function fib(n) {
+  const pts = [], g = Math.PI * (3 - Math.sqrt(5));
+  for (let i = 0; i < n; i++) { const y = 1 - (i / (n - 1)) * 2, r = Math.sqrt(1 - y * y), th = g * i; pts.push(new THREE.Vector3(Math.cos(th) * r, y, Math.sin(th) * r)); }
+  return pts;
+}
+const UP = new THREE.Vector3(0, 1, 0);
+function buildSpecimen(d) {
+  specimen.clear(); specimen.userData.orbiters = [];
+  const c = part('carrier', d.carrier);
+  let R = 1.9;
+  if (c.id === 'subunit') {
+    const mat = new THREE.MeshStandardMaterial({ color: c.color, roughness: .45 });
+    specimen.add(new THREE.Mesh(new THREE.SphereGeometry(.9, 24, 16), mat));
+    for (const n of fib(8)) { const b = new THREE.Mesh(new THREE.SphereGeometry(.75, 20, 14), mat); b.position.copy(n).multiplyScalar(1.05); specimen.add(b); }
+  } else if (c.id === 'inactivated') {
+    specimen.add(new THREE.Mesh(new THREE.SphereGeometry(1.8, 20, 14), new THREE.MeshStandardMaterial({ color: c.color, flatShading: true, roughness: .8 })));
+    R = 1.75;
+  } else if (c.id === 'vector') {
+    const g = new THREE.IcosahedronGeometry(2, 0);
+    specimen.add(new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: c.color, flatShading: true, roughness: .35, metalness: .2 })));
+    specimen.add(new THREE.LineSegments(new THREE.EdgesGeometry(g), new THREE.LineBasicMaterial({ color: 0xbffff4 })));
+    R = 1.7;
+  } else if (c.id === 'mrna') {
+    specimen.add(new THREE.Mesh(new THREE.SphereGeometry(2, 48, 32), new THREE.MeshStandardMaterial({ color: c.color, transparent: true, opacity: .32, roughness: .15, depthWrite: false })));
+    const pts = [...Array(18)].map(() => randIn(1.3));
+    specimen.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 200, .08, 8), new THREE.MeshStandardMaterial({ color: 0xff6fb5, emissive: 0xff2d8a, emissiveIntensity: .6 })));
+    R = 2;
+  } else if (c.id === 'live') {
+    const core = new THREE.Mesh(new THREE.SphereGeometry(1.85, 32, 24), new THREE.MeshStandardMaterial({ color: c.color, emissive: 0x1e5a24, roughness: .5 }));
+    core.userData.pulse = true; specimen.add(core);
+    R = 1.85;
+  }
+  // antigens on the surface
+  const a = part('antigen', d.antigen);
+  const red = new THREE.MeshStandardMaterial({ color: 0xff5a5a, emissive: 0x4a0a0a, roughness: .4 });
+  const yel = new THREE.MeshStandardMaterial({ color: 0xffd166, roughness: .4 });
+  const pur = new THREE.MeshStandardMaterial({ color: 0xb388ff, emissive: 0x3a1a80, roughness: .4 });
+  fib(a.id === 'core' ? 40 : 30).forEach((n, i) => {
+    const g = new THREE.Group();
+    if (a.id === 'core') {
+      const k = new THREE.Mesh(new THREE.CylinderGeometry(.14, .2, .35, 8), pur); k.position.y = .17; g.add(k);
+    } else {
+      const useYel = a.id === 'mix' && i % 2;
+      const stalk = new THREE.Mesh(new THREE.CylinderGeometry(.05, .07, .6, 6), useYel ? yel : red); stalk.position.y = .3; g.add(stalk);
+      const head = new THREE.Mesh(useYel ? new THREE.BoxGeometry(.32, .32, .32) : new THREE.SphereGeometry(.2, 12, 8), useYel ? yel : red); head.position.y = .65; g.add(head);
+    }
+    g.position.copy(n).multiplyScalar(R); g.quaternion.setFromUnitVectors(UP, n); specimen.add(g);
+  });
+  // adjuvant orbiters
+  const j = part('adjuvant', d.adjuvant);
+  if (j.id !== 'none') {
+    const geo = j.id === 'alum' ? new THREE.BoxGeometry(.28, .28, .28) : j.id === 'squalene' ? new THREE.SphereGeometry(.24, 14, 10) : new THREE.OctahedronGeometry(.22);
+    const mat = j.id === 'alum' ? new THREE.MeshStandardMaterial({ color: 0xf0f4ff, roughness: .3 })
+      : j.id === 'squalene' ? new THREE.MeshStandardMaterial({ color: 0xfff1a8, transparent: true, opacity: .7, roughness: .05 })
+      : new THREE.MeshStandardMaterial({ color: 0xff4dd8, emissive: 0xff4dd8, emissiveIntensity: .8 });
+    for (let i = 0; i < 16; i++) {
+      const o = new THREE.Mesh(geo, mat);
+      o.userData = { r: rnd(3, 3.8), sp: rnd(.4, .9), ph: rnd(0, 6.28), tilt: rnd(-.6, .6) };
+      specimen.add(o); specimen.userData.orbiters.push(o);
+    }
+  }
+  // doses shown as copies on the pad
+  for (let k = 1; k < d.doses; k++) {
+    const ghost = new THREE.Mesh(new THREE.SphereGeometry(.45, 16, 12), new THREE.MeshStandardMaterial({ color: c.color, emissive: c.color, emissiveIntensity: .4 }));
+    ghost.userData.dose = k; specimen.add(ghost);
+  }
+}
+function updateSpecimen(dt, t) {
+  specimen.rotation.y += dt * .35;
+  for (const o of specimen.userData.orbiters || []) {
+    const u = o.userData, a = t * u.sp + u.ph;
+    o.position.set(Math.cos(a) * u.r, Math.sin(a) * u.r * u.tilt, Math.sin(a) * u.r);
+    o.rotation.x += dt; o.rotation.y += dt;
+  }
+  for (const ch of specimen.children) {
+    if (ch.userData.pulse) ch.scale.setScalar(1 + Math.sin(t * 3) * .03);
+    if (ch.userData.dose) { const a = t * .8 + ch.userData.dose * Math.PI; ch.position.set(Math.cos(a) * 5, -2.6, Math.sin(a) * 5); }
+  }
+}
+
+// ---------- game state ----------
+const $ = id => document.getElementById(id);
+let mode = 'menu';
+let mission = null;
+let design = { carrier: 'subunit', antigen: 'spike', adjuvant: 'none', route: 'im', doses: 1 };
+const trial = { active: false, t: 0, warp: 1, sim: null, mission: null, events: [], hist: [], lastSample: -1, done: false };
+const BASE_DPS = 2.5; // simulated days per real second at 1x
+
+function camTo(pos, target) { camTween = { from: camera.position.clone(), to: pos, tFrom: controls.target.clone(), tTo: target, k: 0 }; }
+let camTween = null;
+
+function show(screen) {
+  for (const s of ['menu', 'lab', 'trial']) $(s).classList.toggle('hidden', s !== screen);
+  mode = screen;
+  $('sci').textContent = save.science;
+}
+
+// ---------- menu ----------
+function missionUnlocked(i) { return i === 0 || !!save.missions[MISSIONS[i - 1].id]?.done; }
+function renderMenu() {
+  $('mission-tag').textContent = '';
+  $('mission-list').innerHTML = MISSIONS.map((m, i) => {
+    const rec = save.missions[m.id], open = missionUnlocked(i);
+    const tags = [
+      `Budget $${m.budget}k`, `Exposure day ${m.challengeDay}`, `Need ${pct(m.minProtect)} protection`,
+      m.drift >= .3 ? '<span class="tag hot">Mutated strain</span>' : '', !m.cold ? '<span class="tag hot">No refrigeration</span>' : '',
+      m.frailty > 1.2 ? '<span class="tag hot">Frail patients</span>' : '',
+    ].filter(Boolean).map(t => t.startsWith('<') ? t : `<span class="tag">${t}</span>`).join('');
+    const stars = rec?.stars ? '★'.repeat(rec.stars) + '☆'.repeat(3 - rec.stars) : open ? `+${m.reward} ⚗` : '🔒';
+    return `<button class="mission" data-i="${i}" ${open ? '' : 'disabled'}>
+      <span class="name">${i + 1}. ${m.name} <small style="color:var(--muted);font-weight:500">vs ${m.pathogen}</small></span>
+      <span class="stars">${stars}</span><span class="blurb">${m.blurb}</span><span class="tags">${tags}</span></button>`;
+  }).join('');
+  for (const b of document.querySelectorAll('.mission')) b.onclick = () => openLab(MISSIONS[+b.dataset.i]);
+}
+function goMenu() {
+  trial.active = false; resetWorld();
+  show('menu'); renderMenu();
+  controls.autoRotate = true; controls.autoRotateSpeed = .4;
+  camTo(new THREE.Vector3(0, 30, 62), new THREE.Vector3(0, 0, 0));
+}
+
+// ---------- lab ----------
+function openLab(m) {
+  mission = m; trial.active = false; resetWorld();
+  for (const kind of ['carrier', 'antigen', 'adjuvant', 'route']) if (!isUnlocked(part(kind, design[kind]))) design[kind] = PARTS[kind][0].id;
+  $('mission-tag').textContent = `${m.name} · ${m.pathogen}`;
+  labels[2].el.textContent = m.resp ? 'Lungs' : 'Infected tissue';
+  show('lab'); controls.autoRotate = false;
+  camTo(LAB.clone().add(new THREE.Vector3(0, 2.5, 10)), LAB.clone());
+  renderLab(); buildSpecimen(design);
+}
+const KIND_LABEL = { carrier: 'Carrier', antigen: 'Antigen target', adjuvant: 'Adjuvant', route: 'Delivery' };
+function renderLab() {
+  let html = '';
+  for (const kind of ['carrier', 'antigen', 'adjuvant', 'route']) {
+    html += `<h3>${KIND_LABEL[kind]}</h3><div class="cards">` + PARTS[kind].map(p => {
+      const un = isUnlocked(p), on = design[kind] === p.id, afford = save.science >= p.unlock;
+      const sub = un ? (p.cost ? `$${p.cost}k / dose` : 'free') : `🔒 Research: ${p.unlock} ⚗`;
+      return `<button class="card ${on ? 'on' : ''} ${un ? '' : 'locked'} ${!un && afford ? 'afford' : ''}" data-kind="${kind}" data-id="${p.id}"><b>${p.name}</b><small>${sub}</small></button>`;
+    }).join('') + '</div>';
+  }
+  html += `<h3>Doses (${DOSE_GAP} days apart)</h3><div class="doses">` + [1, 2, 3].map(n => `<button class="card ${design.doses === n ? 'on' : ''}" data-doses="${n}"><b>${n}×</b></button>`).join('') + '</div>';
+  $('parts').innerHTML = html;
+  for (const b of $('parts').querySelectorAll('[data-kind]')) {
+    const p = part(b.dataset.kind, b.dataset.id);
+    b.onmouseenter = () => partInfo(p);
+    b.onclick = () => {
+      if (!isUnlocked(p)) {
+        if (save.science < p.unlock) { partInfo(p, `You need ${p.unlock} ⚗ science to research this. Finish missions to earn more, and failed trials still pay a little.`); return; }
+        save.science -= p.unlock; save.unlocked.push(p.id); persist();
+        partInfo(p, 'Researched! Now available in every mission.');
+      }
+      design[b.dataset.kind] = p.id; renderLab(); buildSpecimen(design);
+    };
+  }
+  for (const b of $('parts').querySelectorAll('[data-doses]')) b.onclick = () => { design.doses = +b.dataset.doses; renderLab(); buildSpecimen(design); };
+  renderBrief(); $('sci').textContent = save.science;
+}
+function partInfo(p, extra) {
+  const stats = p.delivery !== undefined && p.potency !== undefined
+    ? ` <br><small style="color:var(--muted)">Potency ${pct(p.potency)} · Shelf stability ${pct(p.stab)} · Side effects ${pct(p.reacto)}</small>` : '';
+  $('part-info').innerHTML = `<b>${p.name}.</b> ${p.desc}${stats}${extra ? `<br><span style="color:var(--sci)">${extra}</span>` : ''}`;
+}
+function meter(label, value, frac, color, marker) {
+  return `<div class="meter"><div class="row"><span>${label}</span><b>${value}</b></div><div class="bar"><i style="width:${clamp(frac, 0, 1) * 100}%;background:${color}"></i>${marker != null ? `<u style="left:${clamp(marker, 0, 1) * 100}%"></u>` : ''}</div></div>`;
+}
+function renderBrief() {
+  const m = mission, d = design;
+  const c = part('carrier', d.carrier), a = part('antigen', d.antigen), j = part('adjuvant', d.adjuvant), r = part('route', d.route);
+  const cost = designCost(d), side = reactoOf(d) * m.frailty;
+  const punch = c.delivery * r.delivery * c.potency * a.immuno * (1 + j.ab) * (1 + .5 * (d.doses - 1)) + .5 * c.delivery * c.tcell * a.immuno * (1 + j.t);
+  const mem = Math.min(.95, c.memory + .12 * (d.doses - 1) + j.mem);
+  const over = cost > m.budget;
+  $('brief').innerHTML = `
+    <div><h2>${m.name}</h2><p class="blurb">${m.blurb}</p></div>
+    <div class="conds">
+      <div><span>Pathogen</span><span>${m.pathogen}${m.resp ? ' (respiratory)' : ''}</span></div>
+      <div><span>Strain drift</span><span style="color:${m.drift >= .3 ? 'var(--bad)' : 'inherit'}">${m.drift === 0 ? 'None' : m.drift < .3 ? 'Low' : 'High'}</span></div>
+      <div><span>Cold chain</span><span style="color:${m.cold ? 'inherit' : 'var(--bad)'}">${m.cold ? 'Available' : 'None'}</span></div>
+      <div><span>Exposure</span><span>Day ${m.challengeDay}</span></div>
+      <div><span>Goal</span><span>${pct(m.minProtect)} protected</span></div>
+    </div>
+    <div>
+      ${meter('Immune punch (lab estimate)', punch < .35 ? 'Weak' : punch < .7 ? 'Moderate' : punch < 1.1 ? 'Strong' : 'Very strong', punch / 1.4, 'var(--accent)')}
+      ${meter('Staying power', mem < .4 ? 'Short' : mem < .65 ? 'Medium' : 'Long', mem, '#7ee0c3')}
+      ${meter('Shelf stability', pct(c.stab), c.stab, m.cold ? '#7c8aa5' : c.stab < .6 ? 'var(--bad)' : 'var(--good)')}
+      ${meter('Side-effect risk', `${pct(side)} / ${pct(m.maxSide)} limit`, side, side > m.maxSide ? 'var(--bad)' : side > m.maxSide * .8 ? 'var(--warn)' : 'var(--good)', m.maxSide)}
+      ${meter('Cost', `$${cost}k / $${m.budget}k`, cost / m.budget, over ? 'var(--bad)' : 'var(--sci)', null)}
+    </div>
+    <button id="launch" class="primary" ${over ? 'disabled' : ''}>${over ? 'Over budget' : 'Begin Trial ▶'}</button>
+    <button id="back-menu" class="ghost">← Mission Control</button>`;
+  $('launch').onclick = startTrial;
+  $('back-menu').onclick = goMenu;
+  if (!$('part-info').innerHTML) partInfo(c);
+}
+
+// ---------- trial ----------
+function resetWorld() {
+  dcs.clear(); bcells.clear(); tcells.clear(); viruses.clear(); clearShots();
+  abGeo.setDrawRange(0, 0); scene.background.copy(BG); syringe.userData.push = 0;
+}
+function log(day, text, cls = '') {
+  const p = document.createElement('p'); p.className = cls; p.innerHTML = `<b>D${Math.floor(day)}</b>${text}`;
+  $('log-items').prepend(p);
+}
+function startTrial() {
+  const m = mission, sim = simulate(design, m);
+  Object.assign(trial, { active: true, t: 0, sim, mission: m, hist: [], lastSample: -1, done: false, design: { ...design } });
+  resetWorld(); $('log-items').innerHTML = '';
+  const c = part('carrier', design.carrier);
+  const ev = [];
+  sim.doseDays.forEach((d, k) => ev.push({ day: d + .01, fn: () => { injectBurst(sim, c); log(d, k === 0 ? `First dose given to 1,000 volunteers via ${design.route === 'nasal' ? 'nasal spray' : 'injection'}.` : `Booster dose ${k + 1} given.`); } }));
+  if (sim.spoil > .2) ev.push({ day: .3, fn: () => log(.3, `${pct(sim.spoil)} of the doses spoiled in transit without refrigeration.`, 'warn') });
+  ev.push({ day: 1, fn: () => {
+    if (sim.halted) log(1, 'Severe reactions reported: high fevers across the trial group.', 'bad');
+    else if (sim.side > m.maxSide * .7) log(1, 'Many volunteers report fever and aches. Still within safety limits.', 'warn');
+    else if (sim.side > .15) log(1, 'Sore arms and mild tiredness. Nothing alarming.');
+    else log(1, 'Almost no side effects reported.', 'good');
+  } });
+  if (sim.halted) ev.push({ day: 2.4, fn: () => log(2.4, 'TRIAL HALTED by the safety board.', 'bad') });
+  else {
+    ev.push({ day: 3, fn: () => log(3, 'Dendritic cells are carrying antigen to the lymph node.') });
+    ev.push({ day: 9, fn: () => log(9, sim.abBase > .3 ? 'B cells and T cells are multiplying in the lymph node.' : 'Only a faint response in the lymph node so far.', sim.abBase > .3 ? '' : 'warn') });
+    if (sim.escape > .15) ev.push({ day: 16, fn: () => log(16, 'Antibodies are binding poorly to the drifted strain.', 'warn') });
+    ev.push({ day: m.challengeDay, fn: () => log(m.challengeDay, `Volunteers exposed to ${m.pathogen}.`, 'bad') });
+    ev.push({ day: m.challengeDay + 4, fn: () => log(m.challengeDay + 4, sim.success ? 'Antibodies are neutralizing the virus. Most volunteers feel fine.' : 'The virus is spreading. Many volunteers are getting sick.', sim.success ? 'good' : 'bad') });
+  }
+  trial.events = ev.sort((a, b) => a.day - b.day);
+  $('day-end').textContent = Math.round(sim.end);
+  $('warp').innerHTML = [1, 2, 4, 8].map(w => `<button data-w="${w}" class="${w === 1 ? 'on' : ''}">${w}×</button>`).join('');
+  trial.warp = 1;
+  for (const b of $('warp').querySelectorAll('button')) b.onclick = () => { trial.warp = +b.dataset.w; for (const x of $('warp').children) x.classList.toggle('on', x === b); };
+  $('skip').onclick = () => { trial.warp = 40; };
+  show('trial');
+  camTo(new THREE.Vector3(-6, 32, 52), new THREE.Vector3(0, 0, 0));
+}
+function updateTrial(dt, t) {
+  const s = trial.sim, m = trial.mission;
+  const days = trial.done ? dt * .4 : dt * BASE_DPS * trial.warp;
+  if (!trial.done) trial.t = Math.min(s.end, trial.t + days);
+  const T = trial.t;
+  while (trial.events.length && trial.events[0].day <= T) trial.events.shift().fn();
+
+  const ab = s.ab(T), tc = s.tc(T), ag = s.antigen(T), fever = s.fever(T), v = s.virus(T);
+  dcs.setTarget(Math.min(1, ag + (T > 1 && T < 30 ? ab * .3 : 0)) * 14);
+  bcells.setTarget(Math.sqrt(clamp(ab / .9, 0, 1)) * 40);
+  tcells.setTarget(Math.sqrt(clamp(tc / .8, 0, 1)) * 30);
+  viruses.setTarget(v * 60);
+  dcs.update(dt, days, t); bcells.update(dt, days, t); tcells.update(dt, days, t); viruses.update(dt, days, t);
+  updateAntibodies(dt, ab / .9);
+  updateShots(dt, days);
+  scene.background.copy(BG).lerp(FEVER_BG, clamp(fever * 1.1 + v * .4, 0, .85));
+
+  $('day').textContent = Math.floor(T);
+  $('temp').textContent = (37 + fever * 3.2 + v * 2).toFixed(1) + '°C';
+  $('temp').style.color = fever + v > .5 ? 'var(--bad)' : fever + v > .25 ? 'var(--warn)' : 'var(--text)';
+  if (T - trial.lastSample >= .25 || T === s.end) { trial.hist.push({ T, ab, tc, fever, v }); trial.lastSample = T; drawChart(); }
+
+  if (!trial.done && T >= s.end) { trial.done = true; setTimeout(showResult, 900); }
+}
+function drawChart() {
+  const cv = $('chart'), g = cv.getContext('2d'), W = cv.width, H = cv.height, s = trial.sim, m = trial.mission;
+  g.clearRect(0, 0, W, H);
+  g.strokeStyle = '#ffffff14'; g.lineWidth = 1;
+  for (let k = 1; k < 4; k++) { g.beginPath(); g.moveTo(0, H * k / 4); g.lineTo(W, H * k / 4); g.stroke(); }
+  const X = T => T / s.end * W;
+  if (!s.halted) { g.strokeStyle = '#e05cff66'; g.setLineDash([6, 6]); g.beginPath(); g.moveTo(X(m.challengeDay), 0); g.lineTo(X(m.challengeDay), H); g.stroke(); g.setLineDash([]); }
+  const top = Math.max(1, ...trial.hist.map(h => Math.max(h.ab, h.tc)));
+  const line = (key, color, scale = top) => {
+    g.strokeStyle = color; g.lineWidth = 3; g.beginPath();
+    trial.hist.forEach((h, i) => { const y = H - 6 - (h[key] / scale) * (H - 12); i ? g.lineTo(X(h.T), y) : g.moveTo(X(h.T), y); });
+    g.stroke();
+  };
+  line('fever', '#ff5d6c', 1); line('v', '#e05cff', 1); line('tc', '#ffa94d'); line('ab', '#4fd1ff');
+}
+function showResult() {
+  const s = trial.sim, m = trial.mission, rec = save.missions[m.id] || { stars: 0, done: false };
+  let earned;
+  if (s.success) { earned = rec.done ? Math.round(m.reward * .25) : m.reward; rec.done = true; rec.stars = Math.max(rec.stars, s.stars); }
+  else earned = 5;
+  save.science += earned; save.missions[m.id] = rec; persist();
+  $('sci').textContent = save.science;
+  const nextOpen = s.success && MISSIONS.indexOf(m) < MISSIONS.length - 1 && !rec.wasDone;
+  $('result-body').innerHTML = `
+    <div class="stars">${s.success ? '★'.repeat(s.stars) + '☆'.repeat(3 - s.stars) : ''}</div>
+    <h2 class="${s.success ? 'ok' : 'no'}">${s.success ? 'Trial successful!' : s.halted ? 'Trial halted' : 'Trial failed'}</h2>
+    <div style="color:var(--muted)">${m.name} · vs ${m.pathogen}</div>
+    <div class="stats">
+      <div><small>Protected</small><b class="${s.protection >= m.minProtect ? 'ok' : 'no'}">${s.halted ? '–' : pct(s.protection)}</b> <em>need ${pct(m.minProtect)}</em></div>
+      <div><small>Side effects</small><b class="${s.side <= m.maxSide ? 'ok' : 'no'}">${pct(s.side)}</b> <em>max ${pct(m.maxSide)}</em></div>
+      <div><small>Cost</small><b>$${s.cost}k</b> <em>of $${m.budget}k</em></div>
+    </div>
+    <h3 style="margin:0 0 8px;font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)">Debrief</h3>
+    <ul class="notes">${s.notes.map(n => `<li>${n}</li>`).join('')}</ul>
+    <p style="color:var(--sci);margin:0 0 16px">+${earned} ⚗ science${s.success ? '' : ' (failures are data too)'}</p>
+    <div class="btns"><button class="ghost" id="r-lab">↺ Back to the lab</button><button class="primary" id="r-menu">Mission Control</button></div>`;
+  $('result').classList.remove('hidden');
+  $('r-lab').onclick = () => { $('result').classList.add('hidden'); openLab(m); };
+  $('r-menu').onclick = () => { $('result').classList.add('hidden'); goMenu(); };
+}
+
+// ---------- menu backdrop activity ----------
+function updateIdle(dt, t) {
+  dcs.setTarget(6); bcells.setTarget(18); tcells.setTarget(12); viruses.setTarget(0);
+  dcs.update(dt, dt * .5, t); bcells.update(dt, dt, t); tcells.update(dt, dt, t); viruses.update(dt, dt, t);
+  updateAntibodies(dt, .25);
+}
+
+// ---------- loop ----------
+const clock = new THREE.Clock();
+function frame() {
+  requestAnimationFrame(frame);
+  const dt = Math.min(clock.getDelta(), .05), t = clock.elapsedTime;
+  if (camTween) {
+    camTween.k = Math.min(1, camTween.k + dt * 1.2);
+    const e = 1 - Math.pow(1 - camTween.k, 3);
+    camera.position.lerpVectors(camTween.from, camTween.to, e);
+    controls.target.lerpVectors(camTween.tFrom, camTween.tTo, e);
+    if (camTween.k >= 1) camTween = null;
+  }
+  if (mode === 'lab') updateSpecimen(dt, t);
+  else if (mode === 'trial' && trial.active) updateTrial(dt, t);
+  else updateIdle(dt, t);
+  // syringe plunge animation
+  const push = syringe.userData.push || 0;
+  if (push > 0) { syringe.userData.push = Math.max(0, push - dt * .8); }
+  syringe.position.y = 14 - Math.sin((1 - (syringe.userData.push || 0)) * Math.PI) * (push > 0 ? 4 : 0);
+  nodeWire.rotation.y += dt * .05;
+  controls.update();
+  renderer.render(scene, camera);
+  updateLabels(mode !== 'lab');
+}
+camera.position.set(0, 30, 62);
+goMenu();
+frame();
+</script>
+</body>
+</html>
