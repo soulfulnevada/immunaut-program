@@ -44,6 +44,9 @@
   #menu h1 { margin: 0 0 4px; font-size: 30px; }
   #menu p.lead { margin: 0 0 18px; color: var(--muted); }
   #mission-list { display: grid; gap: 10px; }
+  .tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+  .tabs button { flex: 1; padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: transparent; color: var(--muted); font: 700 15px "Exo 2", sans-serif; }
+  .tabs button.on { color: #04111c; background: var(--accent); border-color: var(--accent); }
   .mission { display: grid; grid-template-columns: 1fr auto; gap: 4px 16px; text-align: left; padding: 14px 16px; border-radius: 12px; border: 1px solid var(--line); background: #ffffff06; }
   .mission:hover:not(:disabled) { border-color: var(--accent); background: #4fd1ff10; }
   .mission:disabled { opacity: .45; cursor: not-allowed; }
@@ -165,7 +168,8 @@
 <section id="menu" class="screen">
   <div class="panel">
     <h1>Mission Control</h1>
-    <p class="lead">Design a vaccine from parts, run a trial and watch the immune system respond. When a trial fails, the debrief tells you why.</p>
+    <p class="lead" id="lead"></p>
+    <div class="tabs" id="tabs"><button data-c="vax">💉 Vaccines</button><button data-c="tx">💊 Treatments</button></div>
     <div id="mission-list"></div>
     <p class="fine">This is a game, not medical advice. The immunology is heavily simplified, and every pathogen is made up.</p>
   </div>
@@ -185,14 +189,9 @@
   </div>
   <div class="panel" id="log"><h3>Trial log</h3><div id="log-items"></div></div>
   <div class="panel" id="vitals">
-    <div class="temp"><h3>Volunteer vitals</h3><b id="temp">37.0°C</b></div>
+    <div class="temp"><h3 id="vitals-title">Volunteer vitals</h3><b id="temp">37.0°C</b></div>
     <canvas id="chart" width="600" height="220"></canvas>
-    <div class="legend">
-      <span><i style="background:#4fd1ff"></i>Antibodies</span>
-      <span><i style="background:#ffa94d"></i>T cells</span>
-      <span><i style="background:#ff5d6c"></i>Side effects</span>
-      <span><i style="background:#e05cff"></i>Virus</span>
-    </div>
+    <div class="legend" id="legend"></div>
   </div>
 </section>
 
@@ -308,6 +307,138 @@ function simulate(d, m) {
     protection, cost, halted, success, stars, notes, peakAb, end: halted ? 2.5 : ch + 14 };
 }
 // MODEL-END
+
+// TX-MODEL-START
+const DRUGS = [
+  { id: 'pen', name: 'Penicillin-class', cls: 'Antibiotic', target: 'bacteria', desc: 'Breaks bacterial cell walls. Gentle and cheap, but it leaves the body in hours, so it needs frequent doses.', kmax: 6, hl: 2.5, barrier: .5, tox: .1, gut: .15, cost: .5, unlock: 0, color: 0x7fd4ff },
+  { id: 'tetra', name: 'Growth Blocker', cls: 'Antibiotic', target: 'bacteria', desc: 'Jams bacterial protein factories. It stops growth more than it kills, but lasts all day.', kmax: 3, hl: 24, barrier: .6, tox: .15, gut: .3, cost: .8, unlock: 0, color: 0xffd166 },
+  { id: 'broad', name: 'Broad-Spectrum', cls: 'Antibiotic', target: 'bacteria', desc: 'Hits almost every bacterium, including your good gut bacteria. Powerful, but resistance comes easily.', kmax: 5, hl: 10, barrier: .3, tox: .25, gut: .5, cost: 1.5, unlock: 20, color: 0xff8c42 },
+  { id: 'last', name: 'Last-Resort Antibiotic', cls: 'Antibiotic', target: 'bacteria', desc: 'Kept in reserve for superbugs. Almost nothing resists it, but it\'s hard on the kidneys.', kmax: 6, hl: 6, barrier: .9, tox: .5, gut: .25, cost: 3, unlock: 40, color: 0xff4d6d },
+  { id: 'polym', name: 'Polymerase Inhibitor', cls: 'Antiviral', target: 'virus', desc: 'Stops the virus from copying its genes. Works well, but a single mutation can dodge it.', kmax: 4, hl: 8, barrier: .3, tox: .15, gut: 0, cost: 2, unlock: 0, color: 0x9cff6b },
+  { id: 'prot', name: 'Protease Inhibitor', cls: 'Antiviral', target: 'virus', desc: 'Stops new virus particles from assembling. Takes several mutations to escape.', kmax: 3.5, hl: 12, barrier: .6, tox: .25, gut: 0, cost: 2.5, unlock: 30, color: 0xc792ff },
+  { id: 'mab', name: 'Monoclonal Antibody', cls: 'Antiviral', target: 'virus', single: true, desc: 'Lab-made antibodies in a single infusion that lasts for weeks. Expensive, and a mutated virus can slip past.', kmax: 4.5, hl: 500, barrier: .15, tox: .05, gut: 0, cost: 40, unlock: 35, color: 0x4fd1ff },
+];
+const DOSE_LV = { low: { c: .5, tox: .6, name: 'Low' }, std: { c: 1, tox: 1, name: 'Standard' }, high: { c: 2, tox: 1.6, name: 'High' } };
+
+const TX_MISSIONS = [
+  { id: 't1', name: 'Sore Throat', pathogen: 'Strepto-K', kind: 'bacteria', site: 'Throat', blurb: 'A teenager has a bacterial throat infection. Cure it without breeding resistant bacteria.', n0: 1e7, growth: 1.6, immune: .3, ramp: 0, mop: 2, mutation: 2e-9, preResist: {}, adherence: 1, startDay: 1, days: 24, cureBelow: 1, critical: 4e9, maxSide: .6, budget: 40, durations: [3, 5, 7, 10, 14], reward: 30 },
+  { id: 't2', name: 'Wrong Bug?', pathogen: 'Influx-B (flu)', kind: 'virus', site: 'Lungs', blurb: 'A patient with asthma has the flu and is demanding antibiotics. Keep them out of the hospital.', n0: 1e3, growth: 4, immune: 5, ramp: 6, mop: 2, mutation: 1e-6, preResist: {}, adherence: 1, startDay: 1, days: 18, cureBelow: 1, critical: 5e8, maxSide: .5, budget: 50, durations: [3, 5, 7, 10], reward: 35 },
+  { id: 't3', name: 'Superbug Ward', pathogen: 'Staph-R', kind: 'bacteria', site: 'Wound', blurb: 'A wound infection picked up in the hospital. Lab tests show many of the bacteria already shrug off penicillin.', n0: 3e7, growth: 1.4, immune: .2, ramp: 0, mop: 1.8, mutation: 5e-7, preResist: { pen: .3 }, adherence: 1, startDay: 0, days: 28, cureBelow: 1, critical: 5e9, maxSide: .55, budget: 60, durations: [5, 7, 10, 14], reward: 40 },
+  { id: 't4', name: 'Retro-9', pathogen: 'Retro-9', kind: 'virus', site: 'Immune cells', blurb: 'A chronic virus that mutates like crazy. Drive it to undetectable levels and keep it there.', n0: 1e8, growth: 1.1, immune: .03, ramp: 0, mop: 0, resFold: 25, mutation: 3e-5, preResist: {}, adherence: 1, startDay: 0, days: 50, cureBelow: 50, critical: 8e9, maxSide: .6, budget: 160, durations: [14, 30, 45], reward: 50 },
+  { id: 't5', name: 'Forgetful Patient', pathogen: 'Pneumo-L', kind: 'bacteria', site: 'Lungs', blurb: 'An older patient with pneumonia who will miss about half of their doses, however you schedule them.', n0: 1e7, growth: 1.2, immune: .25, ramp: 0, mop: 1.6, mutation: 1e-7, preResist: {}, adherence: .5, startDay: 0, days: 30, cureBelow: 1, critical: 4e9, maxSide: .55, budget: 45, durations: [5, 7, 10, 14], reward: 45 },
+];
+
+const DRUG = id => DRUGS.find(d => d.id === id);
+const EC50 = .3, RES_FOLD = 6, CAP = 1e10;
+const hill = (c, ec) => c * c / (c * c + ec * ec);
+
+function txDoses(rx, m, dr) {
+  if (dr.single) return [m.startDay];
+  const t = []; let i = 0;
+  for (let day = 0; day < rx.dur; day++) for (let k = 0; k < rx.freq; k++) {
+    i++;
+    if (m.adherence >= 1 || ((i * 0.6180339887) % 1) < m.adherence) t.push(m.startDay + day + k / rx.freq);
+  }
+  return t;
+}
+function txCost(rx, m) {
+  return [rx.a, rx.b].filter(Boolean).map(DRUG).reduce((s, dr) => {
+    const n = dr.single ? 1 : rx.dur * rx.freq;
+    return s + dr.cost * DOSE_LV[rx.dose].c * n;
+  }, 0);
+}
+function txSide(rx, m) {
+  const dl = DOSE_LV[rx.dose];
+  return [rx.a, rx.b].filter(Boolean).map(DRUG).reduce((s, dr) => {
+    const len = dr.single ? 1 : Math.min(2, rx.dur / 7);
+    return s + dr.tox * dl.tox * (.6 + .4 * len) * (dr.single ? 1 : (.8 + .1 * rx.freq)) + dr.gut * dl.tox * (dr.single ? 0 : rx.dur / 14);
+  }, 0);
+}
+
+function simulateTx(rx, m) {
+  const drugs = [rx.a, rx.b].filter(Boolean).map(DRUG);
+  const n = drugs.length, G = 1 << n, dl = DOSE_LV[rx.dose];
+  const doses = drugs.map(dr => txDoses(rx, m, dr));
+  const works = drugs.map(dr => dr.target === m.kind);
+  const mu = drugs.map(dr => m.mutation * (1 - dr.barrier));
+  const pre = drugs.map(dr => m.preResist[dr.id] || 0);
+  const conc = (j, t) => { let c = 0; for (const td of doses[j]) if (t >= td) c += Math.exp(-Math.LN2 * (t - td) * 24 / drugs[j].hl); return c * dl.c; };
+
+  // starting population: susceptible plus standing resistant mutants
+  const N = new Float64Array(G);
+  for (let g = 1; g < G; g++) {
+    let f = 1;
+    for (let j = 0; j < n; j++) if (g >> j & 1) f *= pre[j] + mu[j] * 2;
+    N[g] = m.n0 * f;
+  }
+  N[0] = m.n0 - N.reduce((a, b) => a + b, 0);
+  const R0 = Array.from(N);
+
+  const dt = .05, hist = [];
+  let hosp = null, cleared = null, maxRGrowth = 0, peak = 0, sickDays = 0, lastDose = Math.max(m.startDay, ...doses.flat());
+  let t = 0;
+  for (; t <= m.days + 1e-9; t += dt) {
+    const C = drugs.map((_, j) => conc(j, t));
+    let total = N.reduce((a, b) => a + b, 0);
+    // immune cells catch up once the load is low, mopping up stragglers
+    const im = m.immune * (m.ramp ? Math.min(1, t / m.ramp) ** 2 : 1) + m.mop / (1 + total / 1e3);
+    const grow = m.growth * (1 - total / CAP);
+    for (let g = 0; g < G; g++) {
+      if (N[g] <= 0) continue;
+      let kill = 0;
+      for (let j = 0; j < n; j++) if (works[j]) kill += drugs[j].kmax * hill(C[j], (g >> j & 1) ? EC50 * (m.resFold || RES_FOLD) : EC50);
+      N[g] *= Math.exp((grow - kill - im) * dt);
+      if (g && N[g] < .5) N[g] = 0; // a lone mutant usually dies out before it gets going
+    }
+    // mutation: each copy has a small chance of picking up resistance to each drug
+    if (grow > 0) for (let g = 0; g < G; g++) for (let j = 0; j < n; j++) {
+      if (g >> j & 1) continue;
+      const f = N[g] * mu[j] * grow * dt;
+      N[g] -= f; N[g | 1 << j] += f;
+    }
+    total = N.reduce((a, b) => a + b, 0);
+    if (total < 1) { N.fill(0); total = 0; if (cleared === null) cleared = t; }
+    for (let g = 1; g < G; g++) if (N[g] > 1e6) maxRGrowth = Math.max(maxRGrowth, N[g] / Math.max(1, R0[g]));
+    peak = Math.max(peak, total);
+    if (total > m.critical * .03) sickDays += dt;
+    if (Math.round(t / dt) % 5 === 0) hist.push({ t, S: N[0], R: total - N[0], C: C.reduce((a, b) => a + b, 0), total });
+    if (total > m.critical) { hosp = t; break; }
+  }
+  const final = N.reduce((a, b) => a + b, 0);
+  const resistDominant = final > 0 && (final - N[0]) > N[0];
+  const side = txSide(rx, m), cost = txCost(rx, m);
+  const resisted = maxRGrowth > 10;
+  const tooSick = side > m.maxSide;
+  const success = hosp === null && final < m.cureBelow && !tooSick;
+
+  const notes = [];
+  drugs.forEach((dr, j) => { if (!works[j]) notes.push(`${dr.name} is ${dr.cls === 'Antibiotic' ? 'an antibiotic, and antibiotics do nothing to viruses' : 'an antiviral, and antivirals do nothing to bacteria'}. The patient got the side effects with none of the benefit.`); });
+  const gappy = drugs.filter((dr, j) => works[j] && !dr.single && Math.exp(-Math.LN2 * 24 / rx.freq / dr.hl) < .02 && rx.freq < 3);
+  if (hosp !== null) notes.push(`${resistDominant ? 'A resistant strain' : 'The infection'} overwhelmed the patient on day ${Math.floor(hosp)}, and they were hospitalized.`);
+  const relapsed = !resistDominant && works.some(Boolean) && (hosp !== null ? hosp > lastDose + .5 : final >= m.cureBelow);
+  if (relapsed) {
+    if (rx.dose === 'low') notes.push('The low dose only slowed the infection down. A standard dose would have finished it.');
+    else if (!gappy.length && m.adherence >= 1) notes.push(`Treatment stopped on day ${Math.ceil(lastDose)}, before every microbe was gone. The survivors bounced back, so a longer course would finish the job.`);
+  } else if (hosp === null && final >= m.cureBelow && resistDominant) notes.push('A resistant strain survived treatment and took over.');
+  if (resisted) {
+    if (n === 1 && works[0] && !pre[0]) notes.push('With only one drug, a single lucky mutation is enough to escape. Two drugs that work in different ways make that almost impossible.');
+    if (rx.dose === 'low') notes.push('Low doses kill the weak microbes and leave the tough ones to multiply. That\'s how resistance gets bred.');
+  }
+  gappy.forEach(dr => notes.push(`${dr.name} leaves the body within hours. With ${rx.freq === 1 ? 'one dose' : 'two doses'} a day, the microbes regrow between doses.`));
+  if (m.adherence < 1 && !success) notes.push('The patient missed many doses. Long-lasting drugs are more forgiving when doses are skipped.');
+  if (pre.some(p => p > 0) && drugs.some((dr, j) => pre[j] > 0 && n === 1)) notes.push(`Lab tests showed ${pct(pre.find(p => p > 0))} of these bacteria already resist ${drugs.find((d, j) => pre[j] > 0).name}.`);
+  if (tooSick) notes.push(`Side effects were too harsh: ${pct(side)}, limit ${pct(m.maxSide)}. Try lower doses, a shorter course or a gentler drug.`);
+  if (success) notes.unshift(`${m.pathogen} ${m.cureBelow > 1 ? 'is undetectable' : 'was cleared'}${cleared !== null ? ` by day ${Math.ceil(cleared)}` : ''}.`);
+  const bonusClean = !resisted, bonusCheap = cost <= m.budget * .6;
+  const stars = success ? 1 + (bonusClean ? 1 : 0) + (bonusCheap ? 1 : 0) : 0;
+  if (success && !bonusClean) notes.push('★ Bonus: cure it without resistant mutants spreading.');
+  if (success && !bonusCheap) notes.push(`★ Bonus: spend $${Math.floor(m.budget * .6)}k or less.`);
+
+  const at = T => { if (!hist.length) return { S: 0, R: 0, C: 0, total: 0 }; const i = Math.min(hist.length - 1, Math.max(0, Math.round(T / (dt * 5)))); return hist[i]; };
+  return { drugs, doses, works, hist, at, hosp, cleared, final, resisted, resistDominant, side, cost, success, stars, notes, lastDose,
+    end: hosp !== null ? hosp : m.days, halted: hosp !== null };
+}
+// TX-MODEL-END
 
 // ---------- save ----------
 const SAVE_KEY = 'immunaut-save-v1';
@@ -498,6 +629,47 @@ function updateAntibodies(dt, level) {
   abGeo.attributes.position.needsUpdate = true;
 }
 
+// treatment microbes: susceptible (green bacteria / purple virus) and resistant (orange)
+const siteInit = it => { it.p = SITE.clone().add(randIn(5)); it.ph = rnd(0, 6.28); it.rot = randIn(1); };
+const siteStep = (it, dt, days, t) => {
+  it.mesh.position.set(it.p.x + Math.sin(t * 1.5 + it.ph) * .35, it.p.y + Math.cos(t * 1.3 + it.ph) * .35, it.p.z);
+  it.mesh.rotation.x += dt * it.rot.x; it.mesh.rotation.y += dt * (1 + it.rot.y);
+};
+const rodGeo = new THREE.CapsuleGeometry(.4, 1.1, 4, 10);
+const bactS = new Pool(60, () => new THREE.Mesh(rodGeo, new THREE.MeshStandardMaterial({ color: 0x5be38f, emissive: 0x0f4020, roughness: .5 })), siteInit, siteStep);
+const resMat = new THREE.MeshStandardMaterial({ color: 0xff8c2a, emissive: 0xb03a00, emissiveIntensity: .7, roughness: .4 });
+const bactR = new Pool(60, () => new THREE.Mesh(rodGeo, resMat), siteInit, siteStep);
+const virR = new Pool(60, () => {
+  const g = new THREE.Mesh(virusGeo, resMat);
+  for (const n of fib(12)) { const s = new THREE.Mesh(spikeGeo, resMat); s.position.copy(n).multiplyScalar(.85); s.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), n); g.add(s); }
+  return g;
+}, siteInit, siteStep);
+
+// drug molecules in the bloodstream, colored per drug
+const DRUG_MAX = 900;
+const drugGeo = new THREE.BufferGeometry();
+const drugPos = new Float32Array(DRUG_MAX * 3), drugCol = new Float32Array(DRUG_MAX * 3);
+drugGeo.setAttribute('position', new THREE.BufferAttribute(drugPos, 3));
+drugGeo.setAttribute('color', new THREE.BufferAttribute(drugCol, 3));
+const drugData = [...Array(DRUG_MAX)].map(() => ({ u: Math.random(), off: randIn(1.3), sp: rnd(.02, .05) }));
+const drugPoints = new THREE.Points(drugGeo, new THREE.PointsMaterial({ size: .5, vertexColors: true, transparent: true, opacity: .95, depthWrite: false, blending: THREE.AdditiveBlending }));
+drugGeo.setDrawRange(0, 0); world.add(drugPoints);
+function setDrugColors(hexes) {
+  const c = new THREE.Color();
+  for (let k = 0; k < DRUG_MAX; k++) { c.setHex(hexes[k % hexes.length]); drugCol[k * 3] = c.r; drugCol[k * 3 + 1] = c.g; drugCol[k * 3 + 2] = c.b; }
+  drugGeo.attributes.color.needsUpdate = true;
+}
+function updateDrugs(dt, level) {
+  const n = Math.round(clamp(level, 0, 1) * DRUG_MAX);
+  drugGeo.setDrawRange(0, n);
+  for (let k = 0; k < n; k++) {
+    const d = drugData[k]; d.u = (d.u + d.sp * dt) % 1;
+    const p = curve.getPointAt(d.u);
+    drugPos[k * 3] = p.x + d.off.x; drugPos[k * 3 + 1] = p.y + d.off.y; drugPos[k * 3 + 2] = p.z + d.off.z;
+  }
+  drugGeo.attributes.position.needsUpdate = true;
+}
+
 // vaccine particles injected per dose
 const shots = [];
 const shotGeo = new THREE.SphereGeometry(.4, 12, 10);
@@ -613,7 +785,43 @@ function updateSpecimen(dt, t) {
   }
   for (const ch of specimen.children) {
     if (ch.userData.pulse) ch.scale.setScalar(1 + Math.sin(t * 3) * .03);
-    if (ch.userData.dose) { const a = t * .8 + ch.userData.dose * Math.PI; ch.position.set(Math.cos(a) * 5, -2.6, Math.sin(a) * 5); }
+    if (ch.userData.dose) { const a = t * .8 + ch.userData.dose * Math.PI * 2 / (ch.userData.of || 2); ch.position.set(Math.cos(a) * 5, -2.6, Math.sin(a) * 5); }
+  }
+}
+
+function makePill(color, scale) {
+  const g = new THREE.Group();
+  const colMat = new THREE.MeshStandardMaterial({ color, roughness: .25, emissive: color, emissiveIntensity: .15 });
+  const whiteMat = new THREE.MeshStandardMaterial({ color: 0xf2f5fa, roughness: .3 });
+  const top = new THREE.Mesh(new THREE.CylinderGeometry(.85, .85, 1.2, 32), colMat); top.position.y = .6;
+  const topCap = new THREE.Mesh(new THREE.SphereGeometry(.85, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2), colMat); topCap.position.y = 1.2;
+  const bot = new THREE.Mesh(new THREE.CylinderGeometry(.85, .85, 1.2, 32), whiteMat); bot.position.y = -.6;
+  const botCap = new THREE.Mesh(new THREE.SphereGeometry(.85, 32, 16, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), whiteMat); botCap.position.y = -1.2;
+  g.add(top, topCap, bot, botCap);
+  g.rotation.z = .5; g.scale.setScalar(scale);
+  return g;
+}
+function makeAntibody(color, scale) {
+  // a Y-shaped antibody for the monoclonal antibody drug
+  const g = new THREE.Group(), mat = new THREE.MeshStandardMaterial({ color, roughness: .3, emissive: color, emissiveIntensity: .3 });
+  const arm = (len, ang, y) => { const a = new THREE.Mesh(new THREE.CapsuleGeometry(.35, len, 6, 16), mat); a.rotation.z = ang; a.position.set(Math.sin(-ang) * len / 2, y + Math.cos(ang) * len / 2, 0); g.add(a); };
+  arm(1.8, 0, -2.2); arm(1.8, .7, -.4); arm(1.8, -.7, -.4);
+  g.scale.setScalar(scale); return g;
+}
+function buildPills(rx) {
+  specimen.clear(); specimen.userData.orbiters = [];
+  const scale = { low: .8, std: 1, high: 1.25 }[rx.dose];
+  const drugs = [rx.a, rx.b].filter(Boolean).map(DRUG);
+  drugs.forEach((dr, i) => {
+    const m = dr.single ? makeAntibody(dr.color, scale) : makePill(dr.color, scale);
+    m.position.x = drugs.length === 2 ? (i ? 1.6 : -1.6) : 0;
+    specimen.add(m);
+  });
+  // one small pill orbiting the pad per daily dose
+  const per = drugs.some(d => !d.single) ? rx.freq : 0;
+  for (let k = 1; k <= per; k++) {
+    const p = makePill(drugs[0].color, .3);
+    p.userData.dose = k; p.userData.of = per; specimen.add(p);
   }
 }
 
@@ -622,6 +830,12 @@ const $ = id => document.getElementById(id);
 let mode = 'menu';
 let mission = null;
 let design = { carrier: 'subunit', antigen: 'spike', adjuvant: 'none', route: 'im', doses: 1 };
+let rx = { a: 'pen', b: null, dose: 'std', freq: 1, dur: 7 };
+let campaign = 'vax';
+const LEAD = {
+  vax: 'Design a vaccine from parts, run a trial and watch the immune system respond. When a trial fails, the debrief tells you why.',
+  tx: 'The patient is already sick. Pick the drugs, dose and schedule, then watch the microbes fight back. Every survivor is a chance for resistance.',
+};
 const trial = { active: false, t: 0, warp: 1, sim: null, mission: null, events: [], hist: [], lastSample: -1, done: false };
 const BASE_DPS = 2.5; // simulated days per real second at 1x
 
@@ -635,22 +849,31 @@ function show(screen) {
 }
 
 // ---------- menu ----------
-function missionUnlocked(i) { return i === 0 || !!save.missions[MISSIONS[i - 1].id]?.done; }
+const campaignList = () => campaign === 'vax' ? MISSIONS : TX_MISSIONS;
+function missionUnlocked(list, i) { return i === 0 || !!save.missions[list[i - 1].id]?.done; }
 function renderMenu() {
   $('mission-tag').textContent = '';
-  $('mission-list').innerHTML = MISSIONS.map((m, i) => {
-    const rec = save.missions[m.id], open = missionUnlocked(i);
-    const tags = [
+  $('lead').textContent = LEAD[campaign];
+  for (const b of $('tabs').children) { b.classList.toggle('on', b.dataset.c === campaign); b.onclick = () => { campaign = b.dataset.c; renderMenu(); }; }
+  const list = campaignList();
+  $('mission-list').innerHTML = list.map((m, i) => {
+    const rec = save.missions[m.id], open = missionUnlocked(list, i);
+    const hot = t => `<span class="tag hot">${t}</span>`;
+    const tags = (m.kind ? [
+      `Budget $${m.budget}k`, m.kind === 'virus' ? 'Virus' : 'Bacteria', m.cureBelow > 1 ? `Undetectable by day ${m.days}` : `Cure by day ${m.days}`,
+      Object.keys(m.preResist).length ? hot('Resistant strain') : '', m.mutation >= 1e-5 ? hot('Fast-mutating') : '',
+      m.adherence < 1 ? hot('Missed doses') : '', m.critical < 1e9 ? hot('High-risk patient') : '',
+    ] : [
       `Budget $${m.budget}k`, `Exposure day ${m.challengeDay}`, `Need ${pct(m.minProtect)} protection`,
-      m.drift >= .3 ? '<span class="tag hot">Mutated strain</span>' : '', !m.cold ? '<span class="tag hot">No refrigeration</span>' : '',
-      m.frailty > 1.2 ? '<span class="tag hot">Frail patients</span>' : '',
-    ].filter(Boolean).map(t => t.startsWith('<') ? t : `<span class="tag">${t}</span>`).join('');
+      m.drift >= .3 ? hot('Mutated strain') : '', !m.cold ? hot('No refrigeration') : '',
+      m.frailty > 1.2 ? hot('Frail patients') : '',
+    ]).filter(Boolean).map(t => t.startsWith('<') ? t : `<span class="tag">${t}</span>`).join('');
     const stars = rec?.stars ? '★'.repeat(rec.stars) + '☆'.repeat(3 - rec.stars) : open ? `+${m.reward} ⚗` : '🔒';
     return `<button class="mission" data-i="${i}" ${open ? '' : 'disabled'}>
       <span class="name">${i + 1}. ${m.name} <small style="color:var(--muted);font-weight:500">vs ${m.pathogen}</small></span>
       <span class="stars">${stars}</span><span class="blurb">${m.blurb}</span><span class="tags">${tags}</span></button>`;
   }).join('');
-  for (const b of document.querySelectorAll('.mission')) b.onclick = () => openLab(MISSIONS[+b.dataset.i]);
+  for (const b of document.querySelectorAll('.mission')) b.onclick = () => openLab(list[+b.dataset.i]);
 }
 function goMenu() {
   trial.active = false; resetWorld();
@@ -662,12 +885,104 @@ function goMenu() {
 // ---------- lab ----------
 function openLab(m) {
   mission = m; trial.active = false; resetWorld();
-  for (const kind of ['carrier', 'antigen', 'adjuvant', 'route']) if (!isUnlocked(part(kind, design[kind]))) design[kind] = PARTS[kind][0].id;
   $('mission-tag').textContent = `${m.name} · ${m.pathogen}`;
-  labels[2].el.textContent = m.resp ? 'Lungs' : 'Infected tissue';
+  $('part-info').innerHTML = '';
   show('lab'); controls.autoRotate = false;
   camTo(LAB.clone().add(new THREE.Vector3(0, 2.5, 10)), LAB.clone());
+  if (m.kind) {
+    labels[0].el.textContent = 'Medicine enters';
+    labels[2].el.textContent = m.site;
+    if (!m.durations.includes(rx.dur)) rx.dur = m.durations[Math.floor(m.durations.length / 2)];
+    renderTxLab(); buildPills(rx);
+    return;
+  }
+  for (const kind of ['carrier', 'antigen', 'adjuvant', 'route']) if (!isUnlocked(part(kind, design[kind]))) design[kind] = PARTS[kind][0].id;
+  labels[0].el.textContent = 'Injection site';
+  labels[2].el.textContent = m.resp ? 'Lungs' : 'Infected tissue';
   renderLab(); buildSpecimen(design);
+}
+
+// research a locked part or drug; returns true when it's usable
+function tryUnlock(p) {
+  if (isUnlocked(p)) return true;
+  if (save.science < p.unlock) { partInfo(p, `You need ${p.unlock} ⚗ science to research this. Finish missions to earn more, and failed attempts still pay a little.`); return false; }
+  save.science -= p.unlock; save.unlocked.push(p.id); persist();
+  partInfo(p, 'Researched! Now available in every mission.');
+  return true;
+}
+function drugCard(dr, slot) {
+  const un = isUnlocked(dr), on = rx[slot] === dr.id, afford = save.science >= dr.unlock;
+  const sub = un ? (dr.single ? `$${dr.cost}k, one infusion` : `$${dr.cost}k / dose`) : `🔒 Research: ${dr.unlock} ⚗`;
+  return `<button class="card ${on ? 'on' : ''} ${un ? '' : 'locked'} ${!un && afford ? 'afford' : ''}" data-slot="${slot}" data-id="${dr.id}"><b>${dr.name}</b><small>${sub}</small></button>`;
+}
+function optRow(title, key, opts) {
+  return `<h3>${title}</h3><div class="doses">` + opts.map(([v, label]) => `<button class="card ${rx[key] === v ? 'on' : ''}" data-opt="${key}" data-v="${v}"><b>${label}</b></button>`).join('') + '</div>';
+}
+function renderTxLab() {
+  const m = mission;
+  if (!isUnlocked(DRUG(rx.a))) rx.a = 'pen';
+  if (rx.b && (!isUnlocked(DRUG(rx.b)) || rx.b === rx.a)) rx.b = null;
+  const anti = DRUGS.filter(d => d.cls === 'Antibiotic'), vir = DRUGS.filter(d => d.cls === 'Antiviral');
+  const singleOnly = [rx.a, rx.b].filter(Boolean).every(id => DRUG(id).single);
+  let html = `<h3>Antibiotics</h3><div class="cards">${anti.map(d => drugCard(d, 'a')).join('')}</div>`;
+  html += `<h3>Antivirals</h3><div class="cards">${vir.map(d => drugCard(d, 'a')).join('')}</div>`;
+  html += `<h3>Second drug (combo therapy)</h3><div class="cards"><button class="card ${rx.b ? '' : 'on'}" data-slot="b" data-id=""><b>None</b><small>single drug</small></button>${DRUGS.filter(d => d.id !== rx.a).map(d => drugCard(d, 'b')).join('')}</div>`;
+  html += optRow('Dose strength', 'dose', [['low', 'Low'], ['std', 'Standard'], ['high', 'High']]);
+  if (!singleOnly) {
+    html += optRow('Doses per day', 'freq', [[1, '1×'], [2, '2×'], [3, '3×']]);
+    html += optRow('Course length', 'dur', m.durations.map(d => [d, `${d} days`]));
+  }
+  $('parts').innerHTML = html;
+  for (const b of $('parts').querySelectorAll('[data-slot]')) {
+    const dr = b.dataset.id ? DRUG(b.dataset.id) : null;
+    if (dr) b.onmouseenter = () => partInfo(dr);
+    b.onclick = () => {
+      if (dr && !tryUnlock(dr)) return;
+      rx[b.dataset.slot] = dr ? dr.id : null;
+      if (rx.b === rx.a) rx.b = null;
+      renderTxLab(); buildPills(rx);
+    };
+  }
+  for (const b of $('parts').querySelectorAll('[data-opt]')) b.onclick = () => {
+    const k = b.dataset.opt; rx[k] = k === 'dose' ? b.dataset.v : +b.dataset.v;
+    renderTxLab(); buildPills(rx);
+  };
+  renderTxBrief(); $('sci').textContent = save.science;
+}
+function renderTxBrief() {
+  const m = mission, drugs = [rx.a, rx.b].filter(Boolean).map(DRUG), dl = DOSE_LV[rx.dose];
+  const cost = txCost(rx, m), side = txSide(rx, m), over = cost > m.budget;
+  // lab estimates: these ignore whether the drug actually fits the bug, which is the player's call
+  const power = drugs.reduce((s, d) => s + d.kmax * hill(dl.c, EC50), 0) / 7;
+  // share of each dosing interval the drug stays above its effective level
+  const cover = Math.min(...drugs.map(d => {
+    const tau = d.single ? 24 * 14 : 24 / rx.freq;
+    const peak = dl.c / (1 - Math.exp(-Math.LN2 * tau / d.hl));
+    return clamp(d.hl * Math.log2(peak / EC50) / tau, 0, 1);
+  }));
+  const barrier = drugs.length === 2 ? .97 : drugs[0].barrier;
+  const pre = Object.entries(m.preResist);
+  $('brief').innerHTML = `
+    <div><h2>${m.name}</h2><p class="blurb">${m.blurb}</p></div>
+    <div class="conds">
+      <div><span>Pathogen</span><span>${m.pathogen} (${m.kind})</span></div>
+      <div><span>Lab resistance test</span><span style="color:${pre.length ? 'var(--bad)' : 'inherit'}">${pre.length ? pre.map(([id, f]) => `${pct(f)} resist ${DRUG(id).name}`).join(', ') : 'Nothing found'}</span></div>
+      <div><span>Mutation rate</span><span style="color:${m.mutation >= 1e-5 ? 'var(--bad)' : 'inherit'}">${m.mutation >= 1e-5 ? 'Very high' : m.mutation >= 1e-7 ? 'Normal' : 'Low'}</span></div>
+      <div><span>Patient</span><span style="color:${m.adherence < 1 || m.critical < 1e9 ? 'var(--warn)' : 'inherit'}">${m.adherence < 1 ? `Misses ~${pct(1 - m.adherence)} of doses` : m.critical < 1e9 ? 'High risk (asthma)' : 'Reliable'}</span></div>
+      <div><span>Goal</span><span>${m.cureBelow > 1 ? 'Undetectable' : 'Cured'} by day ${m.days}</span></div>
+    </div>
+    <div>
+      ${meter('Killing power (lab estimate)', power < .4 ? 'Weak' : power < .8 ? 'Moderate' : power < 1.2 ? 'Strong' : 'Very strong', power / 1.6, 'var(--accent)')}
+      ${meter('Coverage between doses', cover < .35 ? 'Big gaps' : cover < .75 ? 'Some gaps' : 'Steady', cover, cover < .35 ? 'var(--bad)' : cover < .75 ? 'var(--warn)' : 'var(--good)')}
+      ${meter('Resistance barrier', drugs.length === 2 ? 'Combo: very high' : barrier < .4 ? 'Low' : barrier < .7 ? 'Medium' : 'High', barrier, '#7ee0c3')}
+      ${meter('Side-effect risk', `${pct(side)} / ${pct(m.maxSide)} limit`, side, side > m.maxSide ? 'var(--bad)' : side > m.maxSide * .8 ? 'var(--warn)' : 'var(--good)', m.maxSide)}
+      ${meter('Cost', `$${Math.round(cost)}k / $${m.budget}k`, cost / m.budget, over ? 'var(--bad)' : 'var(--sci)', null)}
+    </div>
+    <button id="launch" class="primary" ${over ? 'disabled' : ''}>${over ? 'Over budget' : 'Start Treatment ▶'}</button>
+    <button id="back-menu" class="ghost">← Mission Control</button>`;
+  $('launch').onclick = startTxTrial;
+  $('back-menu').onclick = goMenu;
+  if (!$('part-info').innerHTML) partInfo(drugs[0]);
 }
 const KIND_LABEL = { carrier: 'Carrier', antigen: 'Antigen target', adjuvant: 'Adjuvant', route: 'Delivery' };
 function renderLab() {
@@ -698,7 +1013,9 @@ function renderLab() {
 }
 function partInfo(p, extra) {
   const stats = p.delivery !== undefined && p.potency !== undefined
-    ? ` <br><small style="color:var(--muted)">Potency ${pct(p.potency)} · Shelf stability ${pct(p.stab)} · Side effects ${pct(p.reacto)}</small>` : '';
+    ? ` <br><small style="color:var(--muted)">Potency ${pct(p.potency)} · Shelf stability ${pct(p.stab)} · Side effects ${pct(p.reacto)}</small>`
+    : p.kmax !== undefined
+    ? ` <br><small style="color:var(--muted)">${p.cls} · Lasts ~${p.hl >= 48 ? Math.round(p.hl / 24) + ' days' : p.hl + ' h'} in the body · Resistance barrier ${pct(p.barrier)} · Side effects ${pct(p.tox)}</small>` : '';
   $('part-info').innerHTML = `<b>${p.name}.</b> ${p.desc}${stats}${extra ? `<br><span style="color:var(--sci)">${extra}</span>` : ''}`;
 }
 function meter(label, value, frac, color, marker) {
@@ -736,8 +1053,21 @@ function renderBrief() {
 
 // ---------- trial ----------
 function resetWorld() {
-  dcs.clear(); bcells.clear(); tcells.clear(); viruses.clear(); clearShots();
-  abGeo.setDrawRange(0, 0); scene.background.copy(BG); syringe.userData.push = 0;
+  dcs.clear(); bcells.clear(); tcells.clear(); viruses.clear(); bactS.clear(); bactR.clear(); virR.clear(); clearShots();
+  abGeo.setDrawRange(0, 0); drugGeo.setDrawRange(0, 0); scene.background.copy(BG); syringe.userData.push = 0;
+}
+const VAX_LEGEND = [['#4fd1ff', 'Antibodies'], ['#ffa94d', 'T cells'], ['#ff5d6c', 'Side effects'], ['#e05cff', 'Virus']];
+function setupTrialHud(sim, title, legend) {
+  $('log-items').innerHTML = '';
+  $('vitals-title').textContent = title;
+  $('legend').innerHTML = legend.map(([c, l]) => `<span><i style="background:${c}"></i>${l}</span>`).join('');
+  $('day-end').textContent = Math.round(sim.end);
+  $('warp').innerHTML = [1, 2, 4, 8].map(w => `<button data-w="${w}" class="${w === 1 ? 'on' : ''}">${w}×</button>`).join('');
+  trial.warp = 1;
+  for (const b of $('warp').querySelectorAll('button')) b.onclick = () => { trial.warp = +b.dataset.w; for (const x of $('warp').children) x.classList.toggle('on', x === b); };
+  $('skip').onclick = () => { trial.warp = 40; };
+  show('trial');
+  camTo(new THREE.Vector3(-6, 32, 52), new THREE.Vector3(0, 0, 0));
 }
 function log(day, text, cls = '') {
   const p = document.createElement('p'); p.className = cls; p.innerHTML = `<b>D${Math.floor(day)}</b>${text}`;
@@ -745,8 +1075,8 @@ function log(day, text, cls = '') {
 }
 function startTrial() {
   const m = mission, sim = simulate(design, m);
-  Object.assign(trial, { active: true, t: 0, sim, mission: m, hist: [], lastSample: -1, done: false, design: { ...design } });
-  resetWorld(); $('log-items').innerHTML = '';
+  Object.assign(trial, { active: true, tx: false, t: 0, sim, mission: m, hist: [], lastSample: -1, done: false, design: { ...design } });
+  resetWorld();
   const c = part('carrier', design.carrier);
   const ev = [];
   sim.doseDays.forEach((d, k) => ev.push({ day: d + .01, fn: () => { injectBurst(sim, c); log(d, k === 0 ? `First dose given to 1,000 volunteers via ${design.route === 'nasal' ? 'nasal spray' : 'injection'}.` : `Booster dose ${k + 1} given.`); } }));
@@ -766,13 +1096,86 @@ function startTrial() {
     ev.push({ day: m.challengeDay + 4, fn: () => log(m.challengeDay + 4, sim.success ? 'Antibodies are neutralizing the virus. Most volunteers feel fine.' : 'The virus is spreading. Many volunteers are getting sick.', sim.success ? 'good' : 'bad') });
   }
   trial.events = ev.sort((a, b) => a.day - b.day);
-  $('day-end').textContent = Math.round(sim.end);
-  $('warp').innerHTML = [1, 2, 4, 8].map(w => `<button data-w="${w}" class="${w === 1 ? 'on' : ''}">${w}×</button>`).join('');
-  trial.warp = 1;
-  for (const b of $('warp').querySelectorAll('button')) b.onclick = () => { trial.warp = +b.dataset.w; for (const x of $('warp').children) x.classList.toggle('on', x === b); };
-  $('skip').onclick = () => { trial.warp = 40; };
-  show('trial');
-  camTo(new THREE.Vector3(-6, 32, 52), new THREE.Vector3(0, 0, 0));
+  setupTrialHud(sim, 'Volunteer vitals', VAX_LEGEND);
+}
+
+// ---------- treatment trial ----------
+const TX_DPS = 1.6; // simulated days per real second at 1x
+const logLevel = N => clamp((Math.log10(Math.max(1, N)) - 2) / 8, 0, 1);
+function startTxTrial() {
+  const m = mission, sim = simulateTx(rx, m);
+  Object.assign(trial, { active: true, tx: true, t: 0, sim, mission: m, hist: [], lastSample: -1, done: false, flags: {},
+    doseQ: sim.doses.flat().sort((a, b) => a - b), rx: { ...rx } });
+  resetWorld();
+  setDrugColors(sim.drugs.map(d => d.color));
+  const names = sim.drugs.map(d => d.name).join(' + ');
+  const ev = [{ day: m.startDay, fn: () => log(m.startDay, sim.drugs.some(d => d.single) && sim.drugs.length === 1
+    ? `Treatment starts: one infusion of ${names}.`
+    : `Treatment starts: ${names}, ${DOSE_LV[rx.dose].name.toLowerCase()} dose, ${rx.freq}× a day for ${rx.dur} days.`) }];
+  sim.drugs.forEach((d, j) => { if (!sim.works[j]) ev.push({ day: m.startDay + 1.5, fn: () => log(m.startDay + 1.5, `${d.name} doesn't seem to be doing anything...`, 'warn') }); });
+  if (m.adherence < 1) ev.push({ day: m.startDay + 2, fn: () => log(m.startDay + 2, 'Pill count is low: the patient has been skipping doses.', 'warn') });
+  trial.events = ev.sort((a, b) => a.day - b.day);
+  setupTrialHud(sim, 'Patient vitals', [[m.kind === 'virus' ? '#e05cff' : '#5be38f', `Susceptible ${m.kind === 'virus' ? 'virus' : 'bacteria'}`], ['#ff8c2a', 'Resistant'], ['#4fd1ff', 'Drug level'], ['#ff5d6c', 'Hospital line']]);
+}
+function txEvents(h) {
+  const s = trial.sim, m = trial.mission, f = trial.flags, T = trial.t;
+  const bug = m.kind === 'virus' ? 'virus' : 'bacteria';
+  const sickLine = m.critical * .03;
+  if (!f.sick && h.total > sickLine) { f.sick = true; log(T, 'The patient feels awful: fever, aches, no appetite.', 'warn'); }
+  if (f.sick && !f.better && h.total < sickLine / 30) { f.better = true; log(T, 'Symptoms are easing.', 'good'); }
+  if (!f.mut && h.R > 1e6 && h.R > (f.prevR || 0) && !(h.R > h.S)) { f.mut = true; log(T, `Lab detects drug-resistant ${bug} multiplying.`, 'warn'); }
+  if (!f.dom && h.R > h.S && h.R > 1e5) { f.dom = true; log(T, `Resistant ${bug} now outnumber the rest!`, 'bad'); }
+  f.prevR = h.R;
+  if (!f.last && T >= s.lastDose && T > m.startDay) { f.last = true; log(T, 'Final dose taken.'); }
+  if (!f.clear && T > m.startDay && h.total < m.cureBelow) { f.clear = true; log(T, m.cureBelow > 1 ? `${m.pathogen} is now undetectable.` : `No ${m.pathogen} detected. The infection is gone.`, 'good'); }
+  if (!f.hosp && s.hosp !== null && T >= s.hosp) { f.hosp = true; log(T, 'PATIENT HOSPITALIZED.', 'bad'); }
+}
+function updateTxTrial(dt, t) {
+  const s = trial.sim, m = trial.mission;
+  const days = trial.done ? dt * .4 : dt * TX_DPS * trial.warp;
+  if (!trial.done) trial.t = Math.min(s.end, trial.t + days);
+  const T = trial.t;
+  while (trial.events.length && trial.events[0].day <= T) trial.events.shift().fn();
+  while (trial.doseQ.length && trial.doseQ[0] <= T) { trial.doseQ.shift(); syringe.userData.push = 1; }
+  const h = s.at(T);
+  txEvents(h);
+
+  const bact = m.kind === 'bacteria';
+  const count = N => N >= 100 ? Math.max(1, logLevel(N) * 60) : 0;
+  (bact ? bactS : viruses).setTarget(count(h.S)); (bact ? bactR : virR).setTarget(count(h.R));
+  (bact ? viruses : bactS).setTarget(0); (bact ? virR : bactR).setTarget(0);
+  const load = logLevel(h.total);
+  dcs.setTarget(load * 6); bcells.setTarget(10 + load * 14); tcells.setTarget(6 + load * 10);
+  for (const p of [dcs, bcells, tcells, viruses, virR, bactS, bactR]) p.update(dt, days, t);
+  updateDrugs(dt, h.C / 1.6);
+  updateAntibodies(dt, 0);
+
+  const sev = clamp((Math.log10(Math.max(1, h.total)) - 6) / (Math.log10(m.critical) - 6), 0, 1);
+  scene.background.copy(BG).lerp(FEVER_BG, sev * .85);
+  $('day').textContent = Math.floor(T);
+  $('temp').textContent = (36.8 + sev * 3.4).toFixed(1) + '°C';
+  $('temp').style.color = sev > .7 ? 'var(--bad)' : sev > .4 ? 'var(--warn)' : 'var(--text)';
+  if (T - trial.lastSample >= .25 || T === s.end) { trial.hist.push({ T, S: h.S, R: h.R, C: h.C }); trial.lastSample = T; drawTxChart(); }
+  if (!trial.done && T >= s.end) { trial.done = true; setTimeout(showResult, 900); }
+}
+function drawTxChart() {
+  const cv = $('chart'), g = cv.getContext('2d'), W = cv.width, H = cv.height, s = trial.sim, m = trial.mission;
+  g.clearRect(0, 0, W, H);
+  const X = T => T / s.end * W, Y = N => H - 6 - (Math.log10(Math.max(1, N)) / 10.5) * (H - 12);
+  // treatment window
+  const t0 = m.startDay, t1 = Math.min(s.end, s.lastDose + .3);
+  g.fillStyle = '#4fd1ff12'; g.fillRect(X(t0), 0, X(t1) - X(t0), H);
+  g.strokeStyle = '#ffffff14'; g.lineWidth = 1;
+  for (let k = 2; k <= 10; k += 2) { g.beginPath(); g.moveTo(0, Y(10 ** k)); g.lineTo(W, Y(10 ** k)); g.stroke(); }
+  g.strokeStyle = '#ff5d6c99'; g.setLineDash([6, 6]); g.beginPath(); g.moveTo(0, Y(m.critical)); g.lineTo(W, Y(m.critical)); g.stroke(); g.setLineDash([]);
+  const line = (fn, color, w = 3) => {
+    g.strokeStyle = color; g.lineWidth = w; g.beginPath();
+    trial.hist.forEach((h, i) => { const y = fn(h); i ? g.lineTo(X(h.T), y) : g.moveTo(X(h.T), y); });
+    g.stroke();
+  };
+  line(h => H - 6 - clamp(h.C / 3, 0, 1) * (H * .35), '#4fd1ff', 2);
+  line(h => Y(h.S), m.kind === 'virus' ? '#e05cff' : '#5be38f');
+  line(h => Y(h.R), '#ff8c2a');
 }
 function updateTrial(dt, t) {
   const s = trial.sim, m = trial.mission;
@@ -820,15 +1223,20 @@ function showResult() {
   else earned = 5;
   save.science += earned; save.missions[m.id] = rec; persist();
   $('sci').textContent = save.science;
-  const nextOpen = s.success && MISSIONS.indexOf(m) < MISSIONS.length - 1 && !rec.wasDone;
+  const tx = !!m.kind;
+  const title = s.success ? (tx ? 'Patient cured!' : 'Trial successful!')
+    : s.halted ? (tx ? 'Patient hospitalized' : 'Trial halted') : (tx ? 'Treatment failed' : 'Trial failed');
+  const outcome = tx
+    ? `<div><small>Infection</small><b class="${s.final < m.cureBelow ? 'ok' : 'no'}">${s.halted ? 'Critical' : s.final < m.cureBelow ? (m.cureBelow > 1 ? 'Undetectable' : 'Cleared') : 'Came back'}</b> <em>${s.resisted ? 'resistance spread' : 'no resistance'}</em></div>`
+    : `<div><small>Protected</small><b class="${s.protection >= m.minProtect ? 'ok' : 'no'}">${s.halted ? '–' : pct(s.protection)}</b> <em>need ${pct(m.minProtect)}</em></div>`;
   $('result-body').innerHTML = `
     <div class="stars">${s.success ? '★'.repeat(s.stars) + '☆'.repeat(3 - s.stars) : ''}</div>
-    <h2 class="${s.success ? 'ok' : 'no'}">${s.success ? 'Trial successful!' : s.halted ? 'Trial halted' : 'Trial failed'}</h2>
+    <h2 class="${s.success ? 'ok' : 'no'}">${title}</h2>
     <div style="color:var(--muted)">${m.name} · vs ${m.pathogen}</div>
     <div class="stats">
-      <div><small>Protected</small><b class="${s.protection >= m.minProtect ? 'ok' : 'no'}">${s.halted ? '–' : pct(s.protection)}</b> <em>need ${pct(m.minProtect)}</em></div>
+      ${outcome}
       <div><small>Side effects</small><b class="${s.side <= m.maxSide ? 'ok' : 'no'}">${pct(s.side)}</b> <em>max ${pct(m.maxSide)}</em></div>
-      <div><small>Cost</small><b>$${s.cost}k</b> <em>of $${m.budget}k</em></div>
+      <div><small>Cost</small><b>$${Math.round(s.cost)}k</b> <em>of $${m.budget}k</em></div>
     </div>
     <h3 style="margin:0 0 8px;font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)">Debrief</h3>
     <ul class="notes">${s.notes.map(n => `<li>${n}</li>`).join('')}</ul>
@@ -841,9 +1249,11 @@ function showResult() {
 
 // ---------- menu backdrop activity ----------
 function updateIdle(dt, t) {
-  dcs.setTarget(6); bcells.setTarget(18); tcells.setTarget(12); viruses.setTarget(0);
-  dcs.update(dt, dt * .5, t); bcells.update(dt, dt, t); tcells.update(dt, dt, t); viruses.update(dt, dt, t);
+  dcs.setTarget(6); bcells.setTarget(18); tcells.setTarget(12);
+  for (const p of [viruses, virR, bactS, bactR]) p.setTarget(0);
+  for (const p of [dcs, bcells, tcells, viruses, virR, bactS, bactR]) p.update(dt, p === dcs ? dt * .5 : dt, t);
   updateAntibodies(dt, .25);
+  updateDrugs(dt, 0);
 }
 
 // ---------- loop ----------
@@ -859,7 +1269,7 @@ function frame() {
     if (camTween.k >= 1) camTween = null;
   }
   if (mode === 'lab') updateSpecimen(dt, t);
-  else if (mode === 'trial' && trial.active) updateTrial(dt, t);
+  else if (mode === 'trial' && trial.active) (trial.tx ? updateTxTrial : updateTrial)(dt, t);
   else updateIdle(dt, t);
   // syringe plunge animation
   const push = syringe.userData.push || 0;
