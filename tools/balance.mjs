@@ -132,6 +132,8 @@ for (const m of M.TX_MISSIONS) {
   }
 }
 
+const flu = M.TX_MISSIONS.find(x => x.id === 't2');
+const mild = { ...flu, growth: 1.6, critical: 6e9, days: 30 };
 // Predictions: the debrief grades the player's guess against `limiter`, so each lesson case must name the right cause.
 console.log('\nPREDICTION CHECKS');
 const vax = (id, d) => M.simulate(d, M.MISSIONS.find(x => x.id === id)).limiter;
@@ -144,6 +146,9 @@ const PREDICT = [
   ['t2 antibiotic for flu is the wrong drug', () => tx('t2', { a: 'pen', dose: 'std', freq: 3, dur: 7 }), 'wrong'],
   ['t3 penicillin loses to resistance', () => tx('t3', { a: 'pen', dose: 'std', freq: 3, dur: 10 }), 'resistance'],
   ['t3 broad-spectrum is too harsh', () => tx('t3', { a: 'broad', dose: 'std', freq: 1, dur: 10 }), 'side'],
+  // graded on the biology: a useless drug is "wrong drug" even when the immune system wins alone
+  ['antibiotic for a mild virus is still the wrong drug', () => M.simulateTx({ a: 'pen', b: null, dose: 'std', freq: 3, dur: 7 }, mild).limiter, 'wrong'],
+  ['a useless drug riding along in a winning combo is half right', () => { const s = M.simulateTx({ a: 'pen', b: 'polym', dose: 'std', freq: 2, dur: 5 }, flu); return s.limiter === 'none' && s.wrongToo ? 'half' : 'no'; }, 'half'],
 ];
 for (const [lesson, run, want] of PREDICT) {
   const got = run(), ok = got === want; if (!ok) broken++;
@@ -152,8 +157,6 @@ for (const [lesson, run, want] of PREDICT) {
 
 // Credit: the debrief separates "the drug saved them", "the drug sped recovery" and
 // "the immune system won alone". A mild virus the body clears unaided tests the last two.
-const flu = M.TX_MISSIONS.find(x => x.id === 't2');
-const mild = { ...flu, growth: 1.6, critical: 6e9, days: 30 };
 const CREDIT = [
   [flu, { a: 'polym', dose: 'std', freq: 2, dur: 5 }, 'saved', 'antiviral saves the high-risk flu patient'],
   [mild, { a: 'polym', dose: 'std', freq: 2, dur: 5 }, 'faster', 'antiviral speeds recovery from a mild virus'],

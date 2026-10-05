@@ -15,8 +15,8 @@ Built with Claude Code in one session. All of it works and was played through in
 | Inspect | Click or tap anything in a trial: it pauses, rings the target and explains what it is and what it's doing right now. |
 | Saved attempts | The lab keeps your last 5 runs per mission with Retry and a Compare view (last 3, changed choices highlighted). |
 | Checkpoint twists | Each mission (except the first of each campaign) has a fixed twist, e.g. a new variant, borderline kidneys, a pricier booster or a patient refusing extra pills. Choices can now break the side-effect limit and fail the trial. |
-| Challenges | Each mission has 2 optional challenges (e.g. "Spend $30k or less", "Clear the infection by day 4"). A star per challenge, +10 ⚗ the first time. They replaced the old bonus stars, which were impossible in 3 vaccine missions and automatic in treatments. |
-| Tissue damage | The infected tissue swells, darkens and grows sores as the infection does harm, then heals. Status in the label and vitals panel; clickable. Vaccine trials show "a typical volunteer". |
+| Challenges | Click a challenge in the lab to target it: its limit appears on the cost or side-effect meter with an on-track note. Each mission has 2 optional challenges (e.g. "Spend $30k or less", "Clear the infection by day 4"). A star per challenge, +10 ⚗ the first time. They replaced the old bonus stars, which were impossible in 3 vaccine missions and automatic in treatments. |
+| Tissue damage | The infected tissue swells, darkens and grows sores as the infection does harm, then heals. Shown as "43% damaged · worsening/healing" with symptoms per tissue type (lungs also get an oxygen reading and log entries when it drops and recovers). Clickable. Vaccine trials show "a typical volunteer". |
 | Predictions | Before a new design runs, the player guesses what will limit it. The debrief grades the guess with the real reason and keeps a streak. Skippable, and can be turned off in Mission Control. |
 | No-WebGL fallback | Shows a notice and the game still runs. |
 | Mobile layout | Works at phone width (panels stack). |

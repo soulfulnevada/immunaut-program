@@ -128,6 +128,9 @@
   .key-tip { color: var(--accent); }
   .tissue { font-size: 12px; font-weight: 600; margin: -2px 0 6px; text-transform: none; }
   .tissue.ok { color: var(--good); } .tissue.heal { color: #7ee0c3; } .tissue.warn { color: var(--warn); } .tissue.no { color: var(--bad); }
+  .symptoms { font-size: 12px; color: #c9d5ea; margin: -4px 0 6px; }
+  .symptoms.low { color: var(--bad); }
+  .tissue { cursor: help; }
   .key { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 8px; padding-top: 8px; border-top: 1px solid #ffffff10; font-size: 11px; color: var(--muted); }
   .key span { display: inline-flex; align-items: center; gap: 4px; }
   .key svg { width: 16px; height: 16px; }
@@ -170,6 +173,7 @@
   .cmp td.cmp-gap { padding: 2px; border: 0; }
   #compare .card2 { width: min(640px, 100%); }
   .predict-res { background: #c792ff14; border: 1px solid #c792ff55; border-radius: 10px; padding: 10px 12px; margin-bottom: 14px; font-size: 13px; color: #e2d4fb; }
+  .predict-res.half { background: #ffb34714; border-color: #ffb34766; color: #ffe2b8; }
   .predict-res.right { background: #5be38f14; border-color: #5be38f66; color: #d4f7e1; }
   .predict-res b { display: block; font-size: 14px; margin-bottom: 2px; }
   .predict-res small { display: block; margin-top: 4px; color: var(--muted); }
@@ -179,6 +183,12 @@
   .chal-row { display: grid; grid-template-columns: 20px 1fr; gap: 0 6px; align-items: center; padding: 5px 8px; border-radius: 8px; background: #ffffff06; font-size: 13px; }
   .chal-row b { font-weight: 600; }
   .chal-row small { grid-column: 2; }
+  button.chal-row { width: 100%; text-align: left; border: 0; color: inherit; font: inherit; cursor: pointer; }
+  button.chal-row:hover { box-shadow: inset 0 0 0 1px #4fd1ff66; }
+  .chal-row.tgt { background: #4fd1ff14; box-shadow: inset 0 0 0 1px var(--accent); }
+  .bar u.tgt { background: var(--warn); width: 3px; }
+  .tgt-note { font-size: 12px; color: #c9d5ea; margin-top: 2px; }
+  .r-switched { width: 100%; margin-top: 8px; }
   .chal-row.met { background: #ffb34714; box-shadow: inset 0 0 0 1px #ffb34755; }
   .chal-row em.new { color: var(--warn); font-style: normal; font-weight: 700; }
   .tag.chal-done { background: #ffb34722; color: #ffd28a; }
@@ -277,6 +287,7 @@
   <div class="panel" id="vitals">
     <div class="temp"><h3 id="vitals-title">Volunteer vitals</h3><b id="temp">37.0°C</b></div>
     <div class="tissue ok" id="tissue"></div>
+    <div class="symptoms" id="symptoms"></div>
     <canvas id="chart" width="600" height="220"></canvas>
     <div class="legend" id="legend"></div>
     <div class="key" id="key"></div>
@@ -677,20 +688,27 @@ function simulateTx(rx, m, change = null) {
   const stars = runStars(m, { success, cost, side, cleared });
 
   // the main reason a regimen failed, for grading the player's prediction
-  const limiter = success ? 'none'
-    : !fin.some(j => works[j]) ? 'wrong'
+  // graded on the biology, not just survival: a plan where no drug can touch the bug is "wrong drug"
+  // even when the immune system wins on its own
+  const useless = drugs.filter((_, j) => !works[j]).map(d => d.name).join(' and ');
+  const helpers = drugs.filter((_, j) => works[j]).map(d => d.name).join(' and ');
+  const limiter = drugs.length && !fin.some(j => works[j]) ? 'wrong'
+    : success ? 'none'
     : tooSick && hosp === null && final < m.cureBelow ? 'side'
     : resistDominant ? 'resistance' : 'short';
+  // a winning plan that carried a useless drug: predicting "wrong drug" is half right
+  const wrongToo = limiter === 'none' && !works.every(Boolean);
+  const bug = m.kind === 'virus' ? 'a virus' : 'bacteria';
   const limiterWhy = {
-    none: `${m.pathogen} was beaten within the limits.`,
-    wrong: `${drugs.filter((_, j) => !works[j]).map(d => d.name).join(' and ')} can't touch ${m.kind === 'virus' ? 'a virus' : 'bacteria'}.`,
+    none: wrongToo ? `${useless} did nothing against ${bug}, but ${helpers} carried the plan.` : `${m.pathogen} was beaten within the limits.`,
+    wrong: success ? `${useless} can't touch ${bug}. The patient's immune system won on its own.` : `${useless} can't touch ${bug}.`,
     side: `The infection cleared, but side effects reached ${pct(side)}, past the ${pct(m.maxSide)} limit.`,
     resistance: 'Resistant microbes outnumbered the rest by the end.',
     short: 'Susceptible microbes survived and bounced back: the drug never reached them long or hard enough.',
   }[limiter];
 
   const at = T => { if (!hist.length) return { S: 0, R: 0, C: 0, total: 0 }; const i = Math.min(hist.length - 1, Math.max(0, Math.round(T / (dt * 5)))); return hist[i]; };
-  return { drugs, ids, doses, works, hist, at, hosp, limiter, limiterWhy, cleared, final, resisted, resistDominant, side, cost, success, stars, notes, lastDose,
+  return { drugs, ids, doses, works, hist, at, hosp, limiter, limiterWhy, wrongToo, cleared, final, resisted, resistDominant, side, cost, success, stars, notes, lastDose,
     startLoad, snap, change, effect, untreated: base, end: hosp !== null ? hosp : m.days, halted: hosp !== null };
 }
 // TX-MODEL-END
@@ -794,7 +812,25 @@ const lesions = [...Array(16)].map((_, i) => {
 // world positions for clicking the tissue
 const tissueSpots = tissueBlobs.map(b => ({ position: b.position.clone().add(SITE), visible: true, scale: { x: 1.4 } }));
 const TISSUE_OK = new THREE.Color(0xff9eb5), TISSUE_SICK = new THREE.Color(0x7a1f2b);
-const tissue = { damage: 0, healing: false, name: 'Lungs', shown: '' };
+const tissue = { damage: 0, healing: false, name: 'Lungs', site: 'Lungs', shown: '', lowO2: false, okO2: false };
+// What the patient feels as each kind of tissue gets damaged: [damage threshold, symptom]. Simplified for the game.
+const SYMPTOMS = {
+  lungs: [[.1, 'cough'], [.3, 'short of breath'], [.6, 'struggling to breathe']],
+  throat: [[.1, 'sore throat'], [.3, 'painful swallowing'], [.6, 'swollen neck glands']],
+  wound: [[.1, 'red and warm'], [.3, 'swollen and throbbing'], [.6, 'oozing pus']],
+  blood: [[.1, 'tired'], [.3, 'chills'], [.6, 'racing heart']],
+  gut: [[.1, 'cramps'], [.3, 'diarrhea'], [.6, 'dehydrated']],
+  skin: [[.1, 'itchy rash'], [.3, 'blisters'], [.6, 'spreading redness']],
+  'immune cells': [[.1, 'tired'], [.3, 'swollen lymph nodes'], [.6, 'catching other infections']],
+};
+function symptomsFor(site, d) {
+  const key = site.toLowerCase();
+  const list = (SYMPTOMS[key] || [[.1, 'tired'], [.3, 'aching'], [.6, 'very weak']]).filter(([at]) => d >= at).map(([, sym]) => sym);
+  // lungs get a blood-oxygen reading: about 98% when healthy, high 80s when badly damaged
+  const oxygen = key === 'lungs' ? Math.round(98 - d * 13) : null;
+  return { list, oxygen };
+}
+const TISSUE_HELP = 'Damage is how much of the tissue is inflamed or injured. "Worsening" means the infection is still winning; "healing" means it is losing and the tissue is recovering.';
 function updateTissue(dt, target, t) {
   // inflames fast, heals slowly
   const up = target > tissue.damage;
@@ -806,13 +842,21 @@ function updateTissue(dt, target, t) {
   siteMat.opacity = (mode === 'trial' && trial.view === 'closeup' ? .16 : .35) + d * .12;
   for (const b of tissueBlobs) b.scale.setScalar(1 + d * .2 + Math.sin(t * 3 + b.userData.ph) * .03 * d);
   for (const l of lesions) l.scale.setScalar(clamp((d - l.userData.at) * 4, 0, 1));
-  const status = d < .06 ? 'healthy' : `${tissue.healing ? 'healing' : d < .45 ? 'inflamed' : 'damaged'} ${Math.round(d * 100)}%`;
+  const status = d < .06 ? 'healthy' : `${Math.round(d * 100)}% damaged · ${tissue.healing ? 'healing' : 'worsening'}`;
   const label = `${tissue.name} · ${status}`;
-  if (label !== tissue.shown) {
-    tissue.shown = label;
+  const sym = symptomsFor(tissue.site, d);
+  const symText = [sym.list.length ? `Symptoms: ${sym.list.join(', ')}` : 'No symptoms', sym.oxygen != null ? `Oxygen ${sym.oxygen}%` : ''].filter(Boolean).join(' · ');
+  if (label + symText !== tissue.shown) {
+    tissue.shown = label + symText;
     labels[2].el.textContent = label;
-    const el = document.getElementById('tissue');
-    if (el) { el.textContent = label; el.className = 'tissue ' + (d < .06 ? 'ok' : tissue.healing ? 'heal' : d < .45 ? 'warn' : 'no'); }
+    const el = document.getElementById('tissue'), se = document.getElementById('symptoms');
+    if (el) { el.textContent = label; el.title = TISSUE_HELP; el.className = 'tissue ' + (d < .06 ? 'ok' : tissue.healing ? 'heal' : d < .45 ? 'warn' : 'no'); }
+    if (se) { se.textContent = symText; se.className = 'symptoms' + (sym.oxygen != null && sym.oxygen <= 92 ? ' low' : ''); }
+  }
+  // the trial log notes when breathing gets hard and when it recovers
+  if (mode === 'trial' && trial.active && !trial.done && sym.oxygen != null) {
+    if (!tissue.lowO2 && sym.oxygen <= 92) { tissue.lowO2 = true; log(trial.t, `Oxygen is dropping to ${sym.oxygen}%. The lungs are struggling.`, 'warn'); }
+    else if (tissue.lowO2 && !tissue.okO2 && sym.oxygen >= 96) { tissue.okO2 = true; log(trial.t, `Breathing easier: oxygen is back to ${sym.oxygen}%.`, 'good'); }
   }
 }
 
@@ -1301,7 +1345,7 @@ function renderMenu() {
 }
 function goMenu() {
   if (inspected) closeInspect();
-  trial.active = false; resetWorld(); tissue.name = 'Infection site'; tissue.damage = 0;
+  trial.active = false; resetWorld(); tissue.name = 'Infection site'; tissue.site = 'Tissue'; tissue.damage = 0;
   show('menu'); renderMenu();
   controls.autoRotate = true; controls.autoRotateSpeed = .4;
   camTo(new THREE.Vector3(0, 30, 62), new THREE.Vector3(0, 0, 0));
@@ -1376,14 +1420,15 @@ function openLab(m) {
   camTo(LAB.clone().add(new THREE.Vector3(0, 2.5, 10)), LAB.clone());
   if (m.kind) {
     labels[0].el.textContent = 'Medicine enters';
-    tissue.name = m.site;
+    tissue.name = m.site; tissue.site = m.site;
     if (!m.durations.includes(rx.dur)) rx.dur = m.durations[Math.floor(m.durations.length / 2)];
     renderTxLab(); buildPills(rx);
     return;
   }
   for (const kind of ['carrier', 'antigen', 'adjuvant', 'route']) if (!isUnlocked(part(kind, design[kind]))) design[kind] = PARTS[kind][0].id;
   labels[0].el.textContent = 'Injection site';
-  tissue.name = `Typical volunteer's ${(m.site || (m.resp ? 'Lungs' : 'tissue')).toLowerCase()}`;
+  tissue.site = m.site || (m.resp ? 'Lungs' : 'Tissue');
+  tissue.name = `Typical volunteer's ${tissue.site.toLowerCase()}`;
   renderLab(); buildSpecimen(design);
 }
 
@@ -1436,7 +1481,7 @@ function renderTxLab() {
 }
 function renderTxBrief() {
   const m = mission, drugs = [rx.a, rx.b].filter(Boolean).map(DRUG), dl = DOSE_LV[rx.dose];
-  const cost = txCost(rx, m), side = txSide(rx, m), over = !m.sandbox && cost > m.budget;
+  const cost = txCost(rx, m), side = txSide(rx, m), over = !m.sandbox && cost > m.budget, tg = targetMeters(m, cost, side);
   // lab estimates: these ignore whether the drug actually fits the bug, which is the player's call
   const power = drugs.reduce((s, d) => s + d.kmax * hill(dl.c, EC50), 0) / 7;
   // share of each dosing interval the drug stays above its effective level
@@ -1460,8 +1505,9 @@ function renderTxBrief() {
       ${meter('Killing power (lab estimate)', power < .4 ? 'Weak' : power < .8 ? 'Moderate' : power < 1.2 ? 'Strong' : 'Very strong', power / 1.6, 'var(--accent)')}
       ${meter('Coverage between doses', cover < .35 ? 'Big gaps' : cover < .75 ? 'Some gaps' : 'Steady', cover, cover < .35 ? 'var(--bad)' : cover < .75 ? 'var(--warn)' : 'var(--good)')}
       ${meter('Resistance barrier', drugs.length === 2 ? 'Combo: very high' : barrier < .4 ? 'Low' : barrier < .7 ? 'Medium' : 'High', barrier, '#7ee0c3')}
-      ${meter('Side-effect risk', `${pct(side)} / ${pct(m.maxSide)} limit`, side, side > m.maxSide ? 'var(--bad)' : side > m.maxSide * .8 ? 'var(--warn)' : 'var(--good)', m.maxSide)}
-      ${m.sandbox ? meter('Cost (no budget in sandbox)', `$${Math.round(cost)}k`, cost / 150, 'var(--sci)') : meter('Cost', `$${Math.round(cost)}k / $${m.budget}k`, cost / m.budget, over ? 'var(--bad)' : 'var(--sci)', null)}
+      ${meter('Side-effect risk', `${pct(side)} / ${pct(m.maxSide)} limit${tg.sideT != null ? ` · 🎯 ${pct(tg.sideT)}` : ''}`, side, side > m.maxSide ? 'var(--bad)' : side > m.maxSide * .8 ? 'var(--warn)' : 'var(--good)', m.maxSide, tg.sideT)}
+      ${m.sandbox ? meter('Cost (no budget in sandbox)', `$${Math.round(cost)}k`, cost / 150, 'var(--sci)') : meter('Cost', `$${Math.round(cost)}k / $${m.budget}k${tg.costT != null ? ` · 🎯 $${tg.costT}k` : ''}`, cost / m.budget, over ? 'var(--bad)' : 'var(--sci)', null, tg.costT != null ? tg.costT / m.budget : null)}
+      ${tg.note}
     </div>
     <button id="launch" class="primary" ${over ? 'disabled' : ''}>${over ? 'Over budget' : 'Start Treatment ▶'}</button>
     <button id="back-menu" class="ghost">← Mission Control</button>
@@ -1469,7 +1515,7 @@ function renderTxBrief() {
     ${attemptsHtml(m)}`;
   $('launch').onclick = () => launchWithPrediction(m, { ...rx }, startTxTrial);
   $('back-menu').onclick = goMenu;
-  wireAttempts(m);
+  wireAttempts(m); wireChallenges(m);
   if (!$('part-info').innerHTML) partInfo(drugs[0]);
 }
 const KIND_LABEL = { carrier: 'Carrier', antigen: 'Antigen target', adjuvant: 'Adjuvant', route: 'Delivery' };
@@ -1506,8 +1552,22 @@ function partInfo(p, extra) {
     ? ` <br><small style="color:var(--muted)">${p.cls} · Lasts ~${p.hl >= 48 ? Math.round(p.hl / 24) + ' days' : p.hl + ' h'} in the body · Resistance barrier ${pct(p.barrier)} · Side effects ${pct(p.tox)}</small>` : '';
   $('part-info').innerHTML = `<b>${p.name}.</b> ${p.desc}${stats}${extra ? `<br><span style="color:var(--sci)">${extra}</span>` : ''}`;
 }
-function meter(label, value, frac, color, marker) {
-  return `<div class="meter"><div class="row"><span>${label}</span><b>${value}</b></div><div class="bar"><i style="width:${clamp(frac, 0, 1) * 100}%;background:${color}"></i>${marker != null ? `<u style="left:${clamp(marker, 0, 1) * 100}%"></u>` : ''}</div></div>`;
+function meter(label, value, frac, color, marker, target) {
+  return `<div class="meter"><div class="row"><span>${label}</span><b>${value}</b></div><div class="bar"><i style="width:${clamp(frac, 0, 1) * 100}%;background:${color}"></i>${marker != null ? `<u style="left:${clamp(marker, 0, 1) * 100}%"></u>` : ''}${target != null ? `<u class="tgt" style="left:${clamp(target, 0, 1) * 100}%"></u>` : ''}</div></div>`;
+}
+// the challenge the player is aiming for in this mission, if any
+const targetOf = m => (m.challenges || []).find(c => c.kind === (save.targets || {})[m.id]);
+function targetMeters(m, cost, side) {
+  const t = targetOf(m);
+  const sideT = t?.kind === 'side' ? t.max : null, costT = t?.kind === 'cost' ? t.max : null;
+  let note = '';
+  if (t) {
+    const text = CHALLENGE_TEXT[t.kind](t);
+    note = t.kind === 'cost' || t.kind === 'side'
+      ? `<div class="tgt-note">🎯 Targeting: ${text}. ${(t.kind === 'cost' ? cost <= t.max : Math.round(side * 100) <= Math.round(t.max * 100)) ? '<span class="ok">On track with this design.</span>' : '<span class="no">This design is over the target.</span>'}</div>`
+      : `<div class="tgt-note">🎯 Targeting: ${text}. The lab can't predict this one, so you'll find out in the trial.</div>`;
+  }
+  return { sideT, costT, note };
 }
 function renderBrief() {
   const m = mission, d = design;
@@ -1515,7 +1575,7 @@ function renderBrief() {
   const cost = designCost(d), side = reactoOf(d) * m.frailty;
   const punch = c.delivery * r.delivery * c.potency * a.immuno * (1 + j.ab) * (1 + .5 * (d.doses - 1)) + .5 * c.delivery * c.tcell * a.immuno * (1 + j.t);
   const mem = Math.min(.95, c.memory + .12 * (d.doses - 1) + j.mem);
-  const over = !m.sandbox && cost > m.budget;
+  const over = !m.sandbox && cost > m.budget, tg = targetMeters(m, cost, side);
   $('brief').innerHTML = `
     <div><h2>${m.name}</h2><p class="blurb">${m.blurb}</p></div>
     <div class="conds">
@@ -1529,8 +1589,9 @@ function renderBrief() {
       ${meter('Immune punch (lab estimate)', punch < .35 ? 'Weak' : punch < .7 ? 'Moderate' : punch < 1.1 ? 'Strong' : 'Very strong', punch / 1.4, 'var(--accent)')}
       ${meter('Staying power', mem < .4 ? 'Short' : mem < .65 ? 'Medium' : 'Long', mem, '#7ee0c3')}
       ${meter('Shelf stability', pct(c.stab), c.stab, m.cold ? '#7c8aa5' : c.stab < .6 ? 'var(--bad)' : 'var(--good)')}
-      ${meter('Side-effect risk', `${pct(side)} / ${pct(m.maxSide)} limit`, side, side > m.maxSide ? 'var(--bad)' : side > m.maxSide * .8 ? 'var(--warn)' : 'var(--good)', m.maxSide)}
-      ${m.sandbox ? meter('Cost (no budget in sandbox)', `$${cost}k`, cost / 150, 'var(--sci)') : meter('Cost', `$${cost}k / $${m.budget}k`, cost / m.budget, over ? 'var(--bad)' : 'var(--sci)', null)}
+      ${meter('Side-effect risk', `${pct(side)} / ${pct(m.maxSide)} limit${tg.sideT != null ? ` · 🎯 ${pct(tg.sideT)}` : ''}`, side, side > m.maxSide ? 'var(--bad)' : side > m.maxSide * .8 ? 'var(--warn)' : 'var(--good)', m.maxSide, tg.sideT)}
+      ${m.sandbox ? meter('Cost (no budget in sandbox)', `$${Math.round(cost)}k`, cost / 150, 'var(--sci)') : meter('Cost', `$${Math.round(cost)}k / $${m.budget}k${tg.costT != null ? ` · 🎯 $${tg.costT}k` : ''}`, cost / m.budget, over ? 'var(--bad)' : 'var(--sci)', null, tg.costT != null ? tg.costT / m.budget : null)}
+      ${tg.note}
     </div>
     <button id="launch" class="primary" ${over ? 'disabled' : ''}>${over ? 'Over budget' : 'Begin Trial ▶'}</button>
     <button id="back-menu" class="ghost">← Mission Control</button>
@@ -1538,7 +1599,7 @@ function renderBrief() {
     ${attemptsHtml(m)}`;
   $('launch').onclick = () => launchWithPrediction(m, { ...design }, startTrial);
   $('back-menu').onclick = goMenu;
-  wireAttempts(m);
+  wireAttempts(m); wireChallenges(m);
   if (!$('part-info').innerHTML) partInfo(c);
 }
 
@@ -1586,6 +1647,7 @@ function setupTrialHud(sim, title, legend) {
   $('skip').onclick = () => { trial.warp = 40; };
   $('cam').onclick = () => setCam(trial.view === 'closeup' ? 'overview' : 'closeup', true);
   if (inspected) closeInspect();
+  tissue.lowO2 = tissue.okO2 = false;
   Object.assign(trial, { view: null, autoCam: true, paused: false, inspectPaused: false, checkpointDone: false, baseSim: null, altSim: null, changeRx: null, prediction: null });
   show('trial');
   setCam('overview');
@@ -1972,7 +2034,7 @@ function describe({ it, kind, pool }) {
     return {
       icon: 'tissue', name: tissue.name.charAt(0).toUpperCase() + tissue.name.slice(1),
       role: 'Where the infection does its harm. Redness and swelling are the immune system fighting here, but the more damage builds up, the sicker the patient feels.',
-      now: d < .06 ? 'Healthy.' : `${Math.round(d * 100)}% inflamed${d >= .45 ? ', with open sores' : ''}. ${tissue.healing ? 'The infection is losing, and the tissue is healing.' : 'Still getting worse.'}`,
+      now: d < .06 ? 'Healthy, no symptoms.' : `${Math.round(d * 100)}% damaged${d >= .45 ? ', with open sores' : ''}. ${tissue.healing ? 'The infection is losing, and the tissue is healing.' : 'Still getting worse.'} The patient feels: ${symptomsFor(tissue.site, d).list.join(', ') || 'fine'}${symptomsFor(tissue.site, d).oxygen != null ? `, oxygen ${symptomsFor(tissue.site, d).oxygen}%` : ''}.`,
     };
   }
   if (kind === 'bcell') return {
@@ -2029,10 +2091,18 @@ canvas.addEventListener('pointerup', e => {
 // ---------- challenges ----------
 function challengeListHtml(m) {
   if (m.sandbox || !m.challenges) return '';
-  const rec = save.missions[m.id], done = rec?.ch || [];
+  const rec = save.missions[m.id], done = rec?.ch || [], t = targetOf(m);
   return `<div class="chal"><h3 class="sub">Challenges</h3>
-    ${rec?.done ? '' : '<small>Optional goals for once you can win this. Each one earns a star and +10 ⚗.</small>'}
-    ${m.challenges.map(c => `<div class="chal-row ${done.includes(c.kind) ? 'met' : ''}"><span>${done.includes(c.kind) ? '🏅' : '○'}</span><b>${CHALLENGE_TEXT[c.kind](c)}</b></div>`).join('')}</div>`;
+    <small>${rec?.done ? 'Click one to target it: its limit shows on the meters above.' : 'Optional goals once you can win this. Each one earns a star and +10 ⚗. Click one to target it.'}</small>
+    ${m.challenges.map(c => `<button class="chal-row ${done.includes(c.kind) ? 'met' : ''} ${t === c ? 'tgt' : ''}" data-target="${c.kind}"><span>${t === c ? '🎯' : done.includes(c.kind) ? '🏅' : '○'}</span><b>${CHALLENGE_TEXT[c.kind](c)}</b>${t === c ? '<small>Targeted · click again to stop</small>' : ''}</button>`).join('')}</div>`;
+}
+function wireChallenges(m) {
+  for (const b of document.querySelectorAll('#brief [data-target]')) b.onclick = () => {
+    save.targets = save.targets || {};
+    save.targets[m.id] = save.targets[m.id] === b.dataset.target ? null : b.dataset.target;
+    persist();
+    (m.kind ? renderTxBrief : renderBrief)();
+  };
 }
 function challengeResultHtml(m, s, newly) {
   if (m.sandbox || !m.challenges) return '';
@@ -2040,7 +2110,8 @@ function challengeResultHtml(m, s, newly) {
   const rows = m.challenges.map(c => {
     const met = challengeMet(c, s), v = challengeValue(c, s);
     const shown = c.kind === 'cost' ? money(v) : c.kind === 'cleared' ? (v === Infinity ? 'not cleared' : `day ${v}`) : `${v}%`;
-    const note = newly.includes(c.kind) ? ' · <em class="new">new! +10 ⚗</em>' : done.includes(c.kind) && !met ? ' · done before' : '';
+    const note = (newly.includes(c.kind) ? ' · <em class="new">new! +10 ⚗</em>' : done.includes(c.kind) && !met ? ' · done before' : '')
+      + (targetOf(m) === c ? ' · 🎯 your target' : '');
     return `<div class="chal-row ${met ? 'met' : ''}"><span>${met ? '🏅' : done.includes(c.kind) ? '✓' : '○'}</span><b>${CHALLENGE_TEXT[c.kind](c)}</b><small>this run: ${shown}${note}</small></div>`;
   }).join('');
   return `<h3 class="sub">Challenges</h3><div class="chal">${rows}${s.success ? '' : '<small>Challenges only count on a successful run.</small>'}</div>`;
@@ -2076,12 +2147,14 @@ function predictionHtml(m, s) {
   const p = trial.prediction;
   if (!p) return '';
   const st = save.predict = save.predict || { right: 0, total: 0, streak: 0 };
-  const right = p === s.limiter, tx = !!m.kind;
-  st.total++; if (right) { st.right++; st.streak++; } else st.streak = 0;
+  const right = p === s.limiter, half = !right && p === 'wrong' && s.wrongToo, tx = !!m.kind;
+  // half right counts half and keeps the streak alive without adding to it
+  st.total++; if (right) { st.right++; st.streak++; } else if (half) st.right += .5; else st.streak = 0;
   persist();
-  return `<div class="predict-res ${right ? 'right' : ''}"><b>${right ? '🔮 You called it!' : '🔮 Not quite.'}</b>
-    You predicted <i>${predictLabel(tx, p)}</i>${right ? '.' : `, but it was <i>${predictLabel(tx, s.limiter)}</i>.`} ${s.limiterWhy}${trial.baseSim ? ' (Graded on the final result, after your checkpoint change.)' : ''}
-    <small>${st.streak > 1 ? `${st.streak} right in a row · ` : ''}${st.right} of ${st.total} predictions right so far</small></div>`;
+  const score = Number.isInteger(st.right) ? st.right : st.right.toFixed(1);
+  return `<div class="predict-res ${right ? 'right' : half ? 'half' : ''}"><b>${right ? '🔮 You called it!' : half ? '🔮 Half right.' : '🔮 Not quite.'}</b>
+    You predicted <i>${predictLabel(tx, p)}</i>${right || half ? '.' : `, but it was <i>${predictLabel(tx, s.limiter)}</i>.`} ${s.limiterWhy}${trial.baseSim ? ' (Graded on the final result, after your checkpoint change.)' : ''}
+    <small>${st.streak > 1 ? `${st.streak} right in a row · ` : ''}${score} of ${st.total} predictions right so far</small></div>`;
 }
 
 // ---------- saved attempts ----------
@@ -2280,9 +2353,15 @@ function showResult() {
     ${compareHtml(s, m)}
     ${!tx && !s.halted ? breakdownHtml(s) : ''}
     ${m.sandbox ? '' : `<p style="color:var(--sci);margin:0 0 16px">+${earned} ⚗ science${s.success ? '' : ' (failures are data too)'}</p>`}
-    <div class="btns"><button class="ghost" id="r-lab">↺ Back to the lab</button><button class="primary" id="r-menu">${m.sandbox ? '🧪 Edit pathogen' : 'Mission Control'}</button></div>`;
+    <div class="btns"><button class="ghost" id="r-lab" title="Back to the lab with this exact design loaded">↺ Tweak this design</button><button class="primary" id="r-menu">${m.sandbox ? '🧪 Edit pathogen' : 'Mission Control'}</button></div>
+    ${trial.changeRx || (!tx && trial.baseSim) ? '<button class="ghost r-switched" id="r-switched">↺ Start from the plan you switched to</button>' : ''}`;
   $('result').classList.remove('hidden');
   $('r-lab').onclick = () => { $('result').classList.add('hidden'); openLab(m); };
+  if ($('r-switched')) $('r-switched').onclick = () => {
+    // the checkpoint plan becomes the starting plan
+    if (tx) rx = { ...trial.changeRx }; else design = { ...trial.design };
+    $('result').classList.add('hidden'); openLab(m);
+  };
   $('r-menu').onclick = () => { $('result').classList.add('hidden'); goMenu(); };
 }
 

@@ -21,7 +21,7 @@ For current status, the Netlify deploy, and the idea backlog, read [`HANDOFF.md`
 - Days in player-facing text use `dayOf(t)` (rounded down), the same as the trial log's `D6`. Rounding up anywhere brings back the day-6/day-7 mismatch.
 - Checkpoint twists live on missions (`twist: { text, boostEff, sideMul, costMul, freqMax }`). They only change what a mid-trial change costs or does (`simulate(d, m, twist)` for a late booster, `{ day, rx, ...twist }` for treatments), so keeping the plan is never affected and campaign balance holds. Checkpoints show evidence (reactions so far, a typical range, an estimate band) rather than the exact outcome, and the player may choose an option that breaks the limit. Budget is the only hard block. TWIST CHECKS prove each twist bites.
 - Stars are 1 for a win plus 1 per mission challenge (`challenges: [{ kind: cost|side|protect|cleared, max|min }]`, checked by `challengeMet`). The harness's CHALLENGE CHECKS keep each one possible but hard: met by 2–40% of winning designs. Retune a threshold when a model change moves it out of that band.
-- Predictions are graded against `sim.limiter` (vaccines: strength / durability / side / none; treatments: wrong / resistance / short / side / none), with `limiterWhy` as the explanation. PREDICTION CHECKS pin the lesson cases.
+- Predictions are graded on the biology, not survival: a plan where no drug can touch the bug is `wrong` even if the immune system wins alone, and a winning combo carrying a useless drug sets `wrongToo` (half right). Graded against `sim.limiter` (vaccines: strength / durability / side / none; treatments: wrong / resistance / short / side / none), with `limiterWhy` as the explanation. PREDICTION CHECKS pin the lesson cases.
 - Protection compared with a goal rounds down (`pctP`), so a failing 49.6% never reads as 50%.
 - The results comparison table reads `trial.baseSim` (the plan before a checkpoint change), `trial.altSim` (the booster the player skipped) and `sim.untreated`.
 - `simulate()` returns a `breakdown` (each part's contribution, 0–1 against the best available) and one `clue` aimed at the weakest link. The vaccine debrief shows these in place of a list of causes, so a new vaccine part needs a breakdown row and a clue.
@@ -33,7 +33,7 @@ For current status, the Netlify deploy, and the idea backlog, read [`HANDOFF.md`
 
 ## Save data
 
-- localStorage key `immunaut-save-v1`: `{ science, unlocked: [partOrDrugIds], missions: { id: { stars, done } }, sandbox, attempts: { missionId: [last 5 runs] }, predict: { right, total, streak }, noPredict }`. Mission records also carry `ch: [challenge kinds met]`; old saves are migrated from their bonus-star count on load. Jacob has real progress in it, so new fields default when missing.
+- localStorage key `immunaut-save-v1`: `{ science, unlocked: [partOrDrugIds], missions: { id: { stars, done } }, sandbox, attempts: { missionId: [last 5 runs] }, predict: { right, total, streak }, noPredict, targets: { missionId: challengeKind } }`. Mission records also carry `ch: [challenge kinds met]`; old saves are migrated from their bonus-star count on load. Jacob has real progress in it, so new fields default when missing.
 - Sandbox runs build a mission object with `sandbox: true`. They unlock everything and skip budget, science and stars.
 
 ## Gotchas
