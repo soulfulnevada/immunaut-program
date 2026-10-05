@@ -8,7 +8,7 @@ For current status, the Netlify deploy, and the idea backlog, read [`HANDOFF.md`
 
 - Everything lives in `index.html`: CSS, markup, and one `<script type="module">`. There's no build step. Three.js 0.160.0 loads from jsDelivr through the import map.
 - Serve it to play: `npx http-server . -p 5181 -c-1`
-- Script sections are marked `// ---------- name ----------`. The two simulation models sit between `// MODEL-START`/`// MODEL-END` (vaccines) and `// TX-MODEL-START`/`// TX-MODEL-END` (treatments).
+- Script sections are marked `// ---------- name ----------`. The simulation models sit between `// MODEL-START`/`// MODEL-END` (vaccines), `// TX-MODEL-START`/`// TX-MODEL-END` (treatments) and `// OUTBREAK-MODEL-START`/`// OUTBREAK-MODEL-END` (the Outbreak campaign's rules).
 
 ## Simulation models
 
@@ -24,6 +24,7 @@ For current status, the Netlify deploy, and the idea backlog, read [`HANDOFF.md`
 - Predictions are graded on the biology, not survival: a plan where no drug can touch the bug is `wrong` even if the immune system wins alone, and a winning combo carrying a useless drug sets `wrongToo` (half right). Graded against `sim.limiter` (vaccines: strength / durability / side / none; treatments: wrong / resistance / short / side / none), with `limiterWhy` as the explanation. PREDICTION CHECKS pin the lesson cases.
 - Protection compared with a goal rounds down (`pctP`), so a failing 49.6% never reads as 50%.
 - The results comparison table reads `trial.baseSim` (the plan before a checkpoint change), `trial.altSim` (the booster the player skipped) and `sim.untreated`.
+- Outbreak campaign (design: `docs/outbreak-campaign.md`): `OUTBREAK-MODEL` holds the story data, chapter mission builders and carry-forward rules (`obCarry`, `obResistAfter`, `obWave`, `obCommendation`). Carry-forward values must stay on the fixed sets (resistance 0/15/30/45/60%, four wave sizes): the harness's OUTBREAK CHECKS prove every chapter 3 state is winnable at the $60k floor by enumerating that set. Campaign briefs show the player's case file (lab result / your assessment / not tested), never the hidden truth, and debriefs for `m.outbreak` describe what was observed instead of quoting lab facts.
 - `simulate()` returns a `breakdown` (each part's contribution, 0–1 against the best available) and one `clue` aimed at the weakest link. The vaccine debrief shows these in place of a list of causes, so a new vaccine part needs a breakdown row and a clue.
 
 ## Content rules
@@ -33,7 +34,7 @@ For current status, the Netlify deploy, and the idea backlog, read [`HANDOFF.md`
 
 ## Save data
 
-- localStorage key `immunaut-save-v1`: `{ science, unlocked: [partOrDrugIds], missions: { id: { stars, done } }, sandbox, attempts: { missionId: [last 5 runs] }, predict: { right, total, streak }, noPredict, targets: { missionId: challengeKind } }`. Mission records also carry `ch: [challenge kinds met]`; old saves are migrated from their bonus-star count on load. Jacob has real progress in it, so new fields default when missing.
+- localStorage key `immunaut-save-v1`: `{ science, unlocked: [partOrDrugIds], missions: { id: { stars, done } }, sandbox, attempts: { missionId: [last 5 runs] }, predict: { right, total, streak }, noPredict, targets: { missionId: challengeKind }, outbreak: { run, snaps: { chapter: snapshot }, best, runs } }`. Mission records also carry `ch: [challenge kinds met]`; old saves are migrated from their bonus-star count on load. Jacob has real progress in it, so new fields default when missing.
 - Sandbox runs build a mission object with `sandbox: true`. They unlock everything and skip budget, science and stars.
 
 ## Gotchas

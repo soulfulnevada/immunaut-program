@@ -1,6 +1,6 @@
 # Outbreak campaign — design sketch (v3)
 
-Status: **draft for review. Nothing is built yet.** v3 closes the last open rules from review (see "Changes from v2" and "Changes from v1" at the end).
+Status: **built as specified (v3)**, with two tuning results from the harness: strain drift in chapter 3 is 0.75 (so skipping sequencing measurably hurts), and chapter 2 uses Superbug Ward's bug with a 45% side-effect limit. v3 closed the last open rules from review (see "Changes from v2" and "Changes from v1" at the end).
 
 ## The idea
 

@@ -178,6 +178,39 @@
   .predict-res b { display: block; font-size: 14px; margin-bottom: 2px; }
   .predict-res small { display: block; margin-top: 4px; color: var(--muted); }
   .fine.opt { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+  .ob-card { display: grid; gap: 10px; }
+  .ob-card h2 { margin: 0; }
+  .ob-lead { margin: 0; color: #c9d5ea; }
+  .ob-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .ob-step { padding: 8px 10px; border-radius: 10px; background: #ffffff06; border: 1px solid var(--line); color: var(--muted); font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
+  .ob-step.now { color: var(--text); border-color: var(--accent); background: #4fd1ff12; }
+  .ob-step.done { color: var(--good); }
+  .ob-step .ghost { padding: 3px 8px; font-size: 11px; }
+  .ob-budget { font-size: 13px; color: #c9d5ea; }
+  .ob-tests { display: grid; gap: 6px; }
+  .ob-test { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 10px; background: #ffffff06; border: 1px solid var(--line); }
+  .ob-test.done { border-color: #5be38f55; }
+  .ob-test small { color: var(--muted); }
+  .ob-test p { margin: 4px 0 0; font-size: 13px; color: #d4f7e1; }
+  .ob-form { display: grid; gap: 6px; }
+  .ob-field { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: center; font-size: 13px; }
+  .ob-field select { padding: 7px; border-radius: 8px; border: 1px solid var(--line); background: #0a0e19; color: var(--text); font: inherit; }
+  .ob-file h3.sub { margin: 0 0 4px; }
+  .ob-lab { color: var(--good); font-weight: 700; }
+  .ob-guess { color: var(--warn); font-weight: 700; }
+  .ob-none { color: var(--muted); font-style: italic; }
+  .ob-alt { filter: saturate(.4); }
+  .ob-medals { display: grid; gap: 6px; }
+  .ob-medal { display: grid; grid-template-columns: 30px 1fr auto; gap: 8px; align-items: center; padding: 8px 10px; border-radius: 10px; background: #ffffff06; opacity: .65; }
+  .ob-medal.won { opacity: 1; background: #ffb34714; box-shadow: inset 0 0 0 1px #ffb34755; }
+  .ob-medal span { font-size: 22px; }
+  .ob-medal small { display: block; color: var(--muted); font-size: 12px; }
+  .ob-medal em { font-style: normal; font-size: 12px; color: var(--muted); }
+  .ob-medal.won em { color: var(--warn); font-weight: 700; }
+  .ob-grade td:last-child { color: var(--muted); font-size: 12px; }
+  .ob-timeline { margin: 0; padding-left: 20px; font-size: 13px; color: #c9d5ea; }
+  .ob-timeline li { margin-bottom: 3px; }
+  @media (max-width: 760px) { .ob-steps { grid-template-columns: 1fr 1fr; } .ob-field { grid-template-columns: 1fr; } }
   .chal { display: grid; gap: 5px; margin-bottom: 12px; }
   .chal small { color: var(--muted); font-size: 12px; }
   .chal-row { display: grid; grid-template-columns: 20px 1fr; gap: 0 6px; align-items: center; padding: 5px 8px; border-radius: 8px; background: #ffffff06; font-size: 13px; }
@@ -262,7 +295,7 @@
   <div class="panel">
     <h1>Mission Control</h1>
     <p class="lead" id="lead"></p>
-    <div class="tabs" id="tabs"><button data-c="vax">💉 Vaccines</button><button data-c="tx">💊 Treatments</button><button data-c="sandbox">🧪 Sandbox</button></div>
+    <div class="tabs" id="tabs"><button data-c="vax">💉 Vaccines</button><button data-c="tx">💊 Treatments</button><button data-c="sandbox">🧪 Sandbox</button><button data-c="outbreak">🌊 Outbreak</button></div>
     <div id="mission-list"></div>
     <label class="fine opt"><input type="checkbox" id="opt-predict"> Ask me to predict the outcome before each new design</label>
     <p class="fine">This is a game, not medical advice. The immunology is heavily simplified, and every pathogen is made up.</p>
@@ -614,6 +647,7 @@ function simulateTx(rx, m, change = null) {
   const R0 = Array.from(N);
 
   const dt = .05, hist = [], cpDay = txCheckpointDay(m);
+  const growBy = new Float64Array(n); // per drug: how much its resistant mutants multiplied
   let hosp = null, cleared = null, maxRGrowth = 0, peak = 0, sickDays = 0, lastDose = Math.max(m.startDay, ...doses.flat());
   let startLoad = m.n0, snap = null;
   let t = 0;
@@ -640,7 +674,10 @@ function simulateTx(rx, m, change = null) {
     }
     total = N.reduce((a, b) => a + b, 0);
     if (total < 1) { N.fill(0); total = 0; if (cleared === null) cleared = t; }
-    for (let g = 1; g < G; g++) if (N[g] > 1e6) maxRGrowth = Math.max(maxRGrowth, N[g] / Math.max(1, R0[g]));
+    for (let g = 1; g < G; g++) if (N[g] > 1e6) {
+      maxRGrowth = Math.max(maxRGrowth, N[g] / Math.max(1, R0[g]));
+      for (let j = 0; j < n; j++) if (g >> j & 1) growBy[j] = Math.max(growBy[j], N[g] / Math.max(1, R0[g]));
+    }
     peak = Math.max(peak, total);
     if (total > m.critical * .03) sickDays += dt;
     if (Math.round(t / dt) % 5 === 0) hist.push({ t, S: N[0], R: total - N[0], C: C.reduce((a, b) => a + b, 0), total });
@@ -671,7 +708,9 @@ function simulateTx(rx, m, change = null) {
   gappy.forEach(dr => notes.push(`${dr.name} leaves the body within hours. With ${finalRx.freq === 1 ? 'one dose' : 'two doses'} a day, the microbes regrow between doses.`));
   if (m.adherence < 1 && !success) notes.push('The patient missed many doses. Long-lasting drugs are more forgiving when doses are skipped.');
   const preHit = fin.find(j => pre[j] > 0);
-  if (preHit !== undefined && fin.length === 1) notes.push(`Lab tests showed ${pct(pre[preHit])} of these bacteria already resist ${drugs[preHit].name}.`);
+  if (preHit !== undefined && fin.length === 1) notes.push(m.outbreak
+    ? `${drugs[preHit].name} stopped working: many of the bacteria shrugged it off.`
+    : `Lab tests showed ${pct(pre[preHit])} of these bacteria already resist ${drugs[preHit].name}.`);
   if (tooSick) notes.push(`Side effects were too harsh: ${pct(side)}, limit ${pct(m.maxSide)}. Try lower doses, a shorter course or a gentler drug.`);
   // credit the treatment only for what the immune system wouldn't have done alone
   const base = drugs.length ? untreated(m) : null;
@@ -708,10 +747,95 @@ function simulateTx(rx, m, change = null) {
   }[limiter];
 
   const at = T => { if (!hist.length) return { S: 0, R: 0, C: 0, total: 0 }; const i = Math.min(hist.length - 1, Math.max(0, Math.round(T / (dt * 5)))); return hist[i]; };
-  return { drugs, ids, doses, works, hist, at, hosp, limiter, limiterWhy, wrongToo, cleared, final, resisted, resistDominant, side, cost, success, stars, notes, lastDose,
+  // only a drug that can attack this bug can breed meaningful resistance to itself
+  const resistedBy = ids.map((_, j) => works[j] && growBy[j] > 10);
+  return { drugs, ids, doses, works, hist, at, hosp, limiter, limiterWhy, wrongToo, resistedBy, relapsed, cleared, final, resisted, resistDominant, side, cost, success, stars, notes, lastDose,
     startLoad, snap, change, effect, untreated: base, end: hosp !== null ? hosp : m.days, halted: hosp !== null };
 }
 // TX-MODEL-END
+
+// OUTBREAK-MODEL-START
+// The Outbreak campaign: one pathogen across three linked chapters. See docs/outbreak-campaign.md.
+const OUTBREAK = {
+  name: 'Harbor Fever', budget: 150, floor: 60,
+  intro: 'Dockworkers in a port town are coming down with fever and a bad cough. Nobody knows what it is yet. You have $150k for the whole outbreak.',
+  // what the tests would show; the player has to find it out
+  truth: { kind: 'bacteria', speed: 'fast', resist: 'pen', risk: 'frail', stability: 'shifting' },
+  tests: [
+    { field: 'kind', name: 'Microscope', cost: 2, question: 'What kind of microbe is it?',
+      result: 'Rod-shaped cells, big enough to see under a light microscope: a bacterium, not a virus.',
+      options: [['bacteria', 'A bacterium'], ['virus', 'A virus']] },
+    { field: 'speed', name: 'Growth curve', cost: 3, question: 'How fast does it spread?',
+      result: 'It doubles in hours. Untreated patients would turn critical around day 5.',
+      options: [['fast', 'Fast: critical within a week'], ['slow', 'Slow: weeks before it gets serious']] },
+    { field: 'resist', name: 'Drug sensitivity', cost: 5, question: 'What does it resist?',
+      result: 'Penicillin clears about 70% of the colonies. Growth Blocker and Broad-Spectrum clear them all.',
+      options: [['none', 'Nothing'], ['pen', 'Penicillin, partly'], ['all', 'Every antibiotic we have']] },
+    { field: 'risk', name: 'Patient charts', cost: 1, question: 'Who is getting sick?',
+      result: 'Several older, frail dockworkers. Side effects have to stay lower than usual.',
+      options: [['healthy', 'Healthy adults'], ['frail', 'Older, frail patients']] },
+    { field: 'stability', name: 'Gene sequencing', cost: 8, question: 'Is it stable?',
+      result: 'The surface-protein gene varies between samples. A vaccine aimed at it could miss later strains.',
+      options: [['stable', 'Stable'], ['shifting', 'Shifting']] },
+  ],
+};
+const OB_BASE_RESIST = { pen: .3 };           // resistance already present in the town
+const OB_WAVES = {                            // chapter 3, set by how chapter 2 ended
+  small: { label: 'Small', day: 60, load: 1, protect: .65 },
+  normal: { label: 'Normal', day: 60, load: 3, protect: .7 },
+  lingering: { label: 'Lingering', day: 50, load: 5, protect: .75 },
+  large: { label: 'Large', day: 45, load: 10, protect: .8 },
+};
+const obBase = id => OB_BASE_RESIST[id] || 0;
+const OB_BUG = { id: 'ob', pathogen: 'Harbor Fever', kind: 'bacteria', site: 'Lungs', immune: .2, ramp: 0, mop: 1.8, mutation: 5e-7,
+  growth: 1.4, n0: 3e7, adherence: 1, startDay: 0, days: 28, cureBelow: 1, critical: 5e9, durations: [3, 5, 7, 10, 14] };
+function obCh2Mission(budget) {
+  return { ...OB_BUG, id: 'ob-ch2', outbreak: true, allParts: true, name: 'Chapter 2 · Respond', maxSide: .45, budget, reward: 0,
+    blurb: 'The first wave is filling the clinic. Treat them.', preResist: { ...OB_BASE_RESIST } };
+}
+function obCh3TxMission(carry, budget) {
+  const w = OB_WAVES[carry.wave];
+  return { ...OB_BUG, id: 'ob-ch3t', outbreak: true, allParts: true, name: 'Chapter 3 · Adapt', maxSide: .45, budget, reward: 0,
+    n0: OB_BUG.n0 * w.load, preResist: { ...carry.resist }, wave: carry.wave,
+    blurb: `Months later, a ${w.label.toLowerCase()} second wave. Treat it, with whatever resistance the first wave left behind.` };
+}
+function obCh3VaxMission(carry, budget, sequenced) {
+  const w = OB_WAVES[carry.wave];
+  return { id: 'ob-ch3v', outbreak: true, allParts: true, name: 'Chapter 3 · Adapt', pathogen: 'Harbor Fever', bug: 'bacteria', site: 'Lungs',
+    drift: .75, cold: true, frailty: 1.25, maxSide: .5, minProtect: w.protect, challengeDay: w.day, resp: true, budget, reward: 0, wave: carry.wave,
+    blurb: `Months later, a ${w.label.toLowerCase()} second wave is coming. Vaccinate the town before exposure on day ${w.day}.`,
+    // without sequencing, the shifted strain is a surprise at the checkpoint
+    twist: sequenced ? null : { text: 'Lab alert: the second-wave strain\u2019s surface protein has shifted from the first wave.', boostEff: .8 } };
+}
+// Per-drug carry-forward, judged once at the end of a treatment chapter. Never stacks; capped at 60%.
+function obResistAfter(s, start) {
+  const out = { ...start };
+  s.ids.forEach((id, j) => {
+    if (!s.works[j]) return;                       // a drug that can't touch this bug breeds no resistance to itself
+    const from = start[id] || 0;
+    const r = s.resistedBy[j] ? .6 : s.relapsed ? Math.min(.6, from + .15) : from;
+    out[id] = Math.round(Math.max(from, r) * 100) / 100;
+  });
+  return out;
+}
+// Exactly one outcome, checked top to bottom. Hospitalization ends the trial, so it always wins.
+function obWave(s, m) {
+  if (s.hosp !== null) return 'large';
+  if (s.final >= m.cureBelow) return 'lingering';
+  if (s.side > m.maxSide) return 'normal';
+  return 'small';
+}
+const obCarry = (s, m) => ({ resist: obResistAfter(s, { ...OB_BASE_RESIST }), wave: obWave(s, m) });
+const obResistContained = resist => Object.entries(resist).every(([id, r]) => r <= obBase(id) + 1e-9);
+// Case-file points: tested 2, right guess 1, wrong or blank 0. Gold 9-10, silver 7-8, bronze 4-6.
+function obCommendation(file) {
+  const pts = OUTBREAK.tests.reduce((sum, t) => {
+    const f = file[t.field] || {};
+    return sum + (f.tested ? 2 : f.value === OUTBREAK.truth[t.field] ? 1 : 0);
+  }, 0);
+  return { pts, tier: pts >= 9 ? 'gold' : pts >= 7 ? 'silver' : pts >= 4 ? 'bronze' : null };
+}
+// OUTBREAK-MODEL-END
 
 // ---------- save ----------
 const SAVE_KEY = 'immunaut-save-v1';
@@ -722,7 +846,7 @@ for (const m of [...MISSIONS, ...TX_MISSIONS]) {
   const r = save.missions[m.id];
   if (r && r.done && !r.ch) r.ch = (m.challenges || []).slice(0, Math.max(0, (r.stars || 1) - 1)).map(c => c.kind);
 }
-const isUnlocked = p => p.unlock === 0 || save.unlocked.includes(p.id) || !!mission?.sandbox;
+const isUnlocked = p => p.unlock === 0 || save.unlocked.includes(p.id) || !!mission?.sandbox || !!mission?.allParts;
 
 // ---------- 3D setup ----------
 const canvas = document.getElementById('scene');
@@ -1297,6 +1421,7 @@ let campaign = 'vax';
 const LEAD = {
   vax: 'Design a vaccine from parts, run a trial and watch the immune system respond. When a trial fails, the debrief tells you why.',
   tx: 'The patient is already sick. Pick the drugs, dose and schedule, then watch the microbes fight back. Every survivor is a chance for resistance.',
+  outbreak: 'One outbreak, three linked chapters. Investigate it, respond to it, then live with the consequences when it comes back.',
   sandbox: 'Build your own pathogen, then beat it with a vaccine or a treatment. Every part is unlocked, there is no budget, and nothing here affects your campaign.',
 };
 const trial = { active: false, t: 0, warp: 1, sim: null, mission: null, events: [], hist: [], lastSample: -1, done: false };
@@ -1321,6 +1446,7 @@ function renderMenu() {
   $('opt-predict').onchange = e => { save.noPredict = !e.target.checked; persist(); };
   for (const b of $('tabs').children) { b.classList.toggle('on', b.dataset.c === campaign); b.onclick = () => { campaign = b.dataset.c; renderMenu(); }; }
   if (campaign === 'sandbox') { renderSandbox(); return; }
+  if (campaign === 'outbreak') { renderOutbreak(); return; }
   const list = campaignList();
   $('mission-list').innerHTML = list.map((m, i) => {
     const rec = save.missions[m.id], open = missionUnlocked(list, i);
@@ -1349,6 +1475,216 @@ function goMenu() {
   show('menu'); renderMenu();
   controls.autoRotate = true; controls.autoRotateSpeed = .4;
   camTo(new THREE.Vector3(0, 30, 62), new THREE.Vector3(0, 0, 0));
+}
+
+// ---------- outbreak campaign ----------
+// Three linked chapters on the existing engines. Rules live in OUTBREAK-MODEL; this is the glue and the screens.
+const obState = () => save.outbreak || (save.outbreak = { run: null, snaps: {}, best: { medals: [], tier: null }, runs: 0 });
+const obRun = () => obState().run;
+const clone = o => JSON.parse(JSON.stringify(o));
+const OB_FIELD = { kind: 'What it is', speed: 'How fast', resist: 'Resistance', risk: 'Patients', stability: 'Stability' };
+const OB_SHORT = { kind: 'A bacterium', speed: 'Critical around day 5', resist: 'About 30% resist penicillin', risk: 'Older, frail: lower side-effect limit', stability: 'Surface protein shifting' };
+const OB_TIER = { gold: '🥇 Gold', silver: '🥈 Silver', bronze: '🥉 Bronze' };
+const TIER_RANK = { gold: 3, silver: 2, bronze: 1 };
+const obSpent = run => run.spent.tests + run.spent.ch2 + run.spent.ch3;
+const obLeft = run => OUTBREAK.budget - obSpent(run);
+function obStart() {
+  const st = obState();
+  st.run = { chapter: 1, tests: [], file: {}, spent: { tests: 0, ch2: 0, ch3: 0 }, grant: 0, ch2: null, route: null, ch3: null, timeline: [] };
+  st.snaps = { 1: clone(st.run) };
+  persist();
+}
+// Replaying a chapter starts a new branch from its snapshot: everything after it is discarded.
+function obReplay(n) {
+  const st = obState();
+  if (!st.snaps[n] || !confirm(`Replaying chapter ${n} replaces everything after it in this run. Continue?`)) return;
+  st.run = clone(st.snaps[n]);
+  for (const k of Object.keys(st.snaps)) if (+k > n) delete st.snaps[k];
+  persist(); renderOutbreak();
+}
+function obMission(run) {
+  if (run.chapter === 2) return obCh2Mission(obLeft(run));
+  const budget = obLeft(run) + run.grant;
+  return run.route === 'vax' ? obCh3VaxMission(run.ch2, budget, !!run.file.stability?.tested) : obCh3TxMission(run.ch2, budget);
+}
+// The case file as recorded: lab results, the player's assessments and untested fields stay visibly different.
+function obFileValue(field) {
+  const f = obRun().file[field] || {}, t = OUTBREAK.tests.find(x => x.field === field);
+  if (f.tested) return `<span class="ob-lab">Lab result:</span> ${OB_SHORT[field]}`;
+  if (f.value) return `<span class="ob-guess">Your assessment:</span> ${t.options.find(o => o[0] === f.value)[1]} (untested)`;
+  return '<span class="ob-none">Not tested</span>';
+}
+const obFileRows = () => OUTBREAK.tests.map(t => `<div><span>${OB_FIELD[t.field]}</span><span>${obFileValue(t.field)}</span></div>`).join('');
+function obBriefHtml(m) {
+  const run = obRun();
+  if (!run) return '';
+  let rows = obFileRows();
+  if (run.chapter === 3) {
+    rows += `<div><span>Second wave</span><span>${OB_WAVES[run.ch2.wave].label}${m.challengeDay ? `, exposure day ${m.challengeDay}` : ''}</span></div>`;
+    const seen = run.ch2.used.filter(id => DRUG(id).target === 'bacteria');
+    if (seen.length) rows += `<div><span>Seen in chapter 2</span><span>${seen.map(id => `${DRUG(id).name} now ${pct(run.ch2.resist[id] || 0)} resistant`).join(', ')}</span></div>`;
+  }
+  rows += `<div><span>Goal</span><span>${m.kind ? `Cured by day ${m.days}` : `${pct(m.minProtect)} protected`}</span></div>`;
+  return `<div class="conds ob-file"><h3 class="sub">Your case file</h3>${rows}</div>`;
+}
+function obBudgetNote(m) {
+  const run = obRun();
+  if (!m.outbreak || !run) return '';
+  return `<div class="tgt-note">Outbreak budget: ${money(m.budget)} available${run.grant && run.chapter === 3 ? `, including a ${money(run.grant)} emergency grant (forfeits the 💰 medal)` : ''}.</div>`;
+}
+// Without the patient charts, the campaign doesn't tell you the side-effect limit up front.
+function sideMeter(m, side, tg) {
+  if (m.outbreak && !obRun()?.file.risk?.tested)
+    return meter('Side-effect risk', `${pct(side)} · limit unknown (charts not checked)`, side, 'var(--accent)', null, tg.sideT);
+  return meter('Side-effect risk', `${pct(side)} / ${pct(m.maxSide)} limit${tg.sideT != null ? ` · 🎯 ${pct(tg.sideT)}` : ''}`, side, side > m.maxSide ? 'var(--bad)' : side > m.maxSide * .8 ? 'var(--warn)' : 'var(--good)', m.maxSide, tg.sideT);
+}
+
+// Chapter results feed the next chapter. Called from the results screen.
+function obCommit(m, s) {
+  const st = obState(), run = st.run;
+  if (m.id === 'ob-ch2') {
+    const carry = obCarry(s, m);
+    run.spent.ch2 = s.cost;
+    run.ch2 = { ...carry, used: s.ids.slice() };
+    run.timeline.push(`Ch 2: started on ${rxText(trial.rx)}.`);
+    if (trial.changeRx) run.timeline.push(`Ch 2, day ${trial.changeDay}: switched to ${rxText(trial.changeRx)}.`);
+    run.timeline.push(`Ch 2 result: ${txOutcome(s, m).text}. The second wave will be ${OB_WAVES[carry.wave].label.toLowerCase()}.`);
+    run.grant = Math.max(0, OUTBREAK.floor - obLeft(run));
+    if (run.grant) run.timeline.push(`The town council stepped in with a ${money(run.grant)} emergency grant.`);
+    run.chapter = 3;
+    st.snaps[3] = clone(run);
+  } else {
+    run.spent.ch3 = s.cost;
+    const tx = !!m.kind;
+    const finalResist = tx ? obResistAfter(s, run.ch2.resist) : run.ch2.resist;
+    const outcome = tx ? txOutcome(s, m).text : s.halted ? 'trial halted by the safety board' : `${pctP(s.protection)} of the town protected`;
+    run.ch3 = { success: s.success, resist: finalResist, outcome };
+    run.timeline.push(tx ? `Ch 3: treated the second wave with ${rxText(trial.rx)}.` : `Ch 3: vaccinated the town (${planText(m, trial.startDesign)}).`);
+    if (tx && trial.changeRx) run.timeline.push(`Ch 3, day ${trial.changeDay}: switched to ${rxText(trial.changeRx)}.`);
+    if (!tx && trial.baseSim) run.timeline.push(`Ch 3, day ${VAX_CHECKPOINT}: added a booster.`);
+    run.timeline.push(`Ch 3 result: ${outcome}.`);
+    const left = obLeft(run);
+    run.medals = [s.success && 'town', obResistContained(finalResist) && 'resist', run.grant === 0 && left >= 20 && 'budget'].filter(Boolean);
+    run.tier = obCommendation(run.file).tier;
+    // science: a base award per finished run, plus 10 per medal you'd never earned before
+    const fresh = run.medals.filter(x => !st.best.medals.includes(x));
+    run.science = 20 + 10 * fresh.length;
+    st.best.medals = [...new Set([...st.best.medals, ...run.medals])];
+    if ((TIER_RANK[run.tier] || 0) > (TIER_RANK[st.best.tier] || 0)) st.best.tier = run.tier;
+    st.runs++;
+    save.science += run.science; $('sci').textContent = save.science;
+    run.chapter = 4;
+  }
+  persist();
+}
+
+function obProgressHtml(run) {
+  const st = obState(), names = ['Investigate', 'Respond', 'Adapt', 'Town report'];
+  return `<div class="ob-steps">${names.map((n, i) => {
+    const c = i + 1, state = run.chapter > c ? 'done' : run.chapter === c ? 'now' : '';
+    const replay = c <= 3 && run.chapter > c && st.snaps[c] ? `<button class="ghost" data-replay="${c}">↺ Replay</button>` : '';
+    return `<div class="ob-step ${state}"><b>${c <= 3 ? `${c}. ` : ''}${n}</b>${replay}</div>`;
+  }).join('')}</div>`;
+}
+function obCh1Html(run) {
+  const tests = OUTBREAK.tests.map(t => {
+    const done = run.tests.includes(t.field);
+    return `<div class="ob-test ${done ? 'done' : ''}"><div><b>${t.name}</b> <small>${t.question}</small>${done ? `<p>${t.result}</p>` : ''}</div>
+      ${done ? `<span class="ok">✓ $${t.cost}k</span>` : `<button class="ghost" data-test="${t.field}">Run · $${t.cost}k</button>`}</div>`;
+  }).join('');
+  const fields = OUTBREAK.tests.map(t => {
+    const done = run.tests.includes(t.field), cur = run.file[t.field]?.value || '';
+    return `<label class="ob-field"><span>${t.question}</span>${done ? `<b class="ok">${OB_SHORT[t.field]}</b>`
+      : `<select data-field="${t.field}"><option value="">Not sure (leave blank)</option>${t.options.map(([v, l]) => `<option value="${v}" ${cur === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`}</label>`;
+  }).join('');
+  return `<h3 class="sub">Chapter 1 · Investigate</h3>
+    <p class="ob-lead">Samples from the dockworkers just arrived. Each test costs money and answers one question. Run the ones you think are worth it, then fill in your case file. Untested answers are your own assessment.</p>
+    <div class="ob-budget">Outbreak budget left: <b>${money(obLeft(run))}</b> of $${OUTBREAK.budget}k</div>
+    <div class="ob-tests">${tests}</div>
+    <h3 class="sub">Your case file</h3><div class="ob-form">${fields}</div>
+    <button class="primary" id="ob-file">File the case and start chapter 2 ▶</button>`;
+}
+function obCh2Html(run) {
+  return `<h3 class="sub">Chapter 2 · Respond</h3>
+    <p class="ob-lead">The first wave is filling the clinic. Treat them. Your case file goes with you, exactly as you filed it. Nobody will tell you which guesses were right until the town report.</p>
+    <div class="conds ob-file">${obFileRows()}</div>
+    <div class="ob-budget">Outbreak budget left: <b>${money(obLeft(run))}</b></div>
+    <p class="fine">Hint: the brief shows what you know. Anything you didn't test, you'll have to find out on the ward.</p>
+    <button class="primary" id="ob-go">Open the clinic ▶</button>`;
+}
+function obCh3Html(run) {
+  const w = OB_WAVES[run.ch2.wave];
+  const seen = run.ch2.used.filter(id => DRUG(id).target === 'bacteria');
+  return `<h3 class="sub">Chapter 3 · Adapt</h3>
+    <p class="ob-lead">Months later, a second wave. This one is <b>${w.label.toLowerCase()}</b>, because of how chapter 2 ended. This time you can get ahead of it.</p>
+    <div class="conds ob-file">
+      <div><span>Second wave</span><span>${w.label}: exposure on day ${w.day} if you vaccinate; ${w.load === 1 ? 'the same size as the first wave' : `${w.load}× the first wave's size`} if you treat</span></div>
+      ${seen.length ? `<div><span>Seen in chapter 2</span><span>${seen.map(id => `${DRUG(id).name} now ${pct(run.ch2.resist[id] || 0)} resistant`).join(', ')}</span></div>` : ''}
+      <div><span>Budget</span><span>${money(obLeft(run))}${run.grant ? ` + ${money(run.grant)} emergency grant` : ''}</span></div>
+    </div>
+    <p class="fine">Hint: vaccines work best when you know which part of the microbe stays the same between strains.</p>
+    <div class="sbx-go">
+      <button class="primary ${run.route === 'vax' ? '' : 'ob-alt'}" id="ob-vax">💉 Vaccinate the town</button>
+      <button class="primary ${run.route === 'tx' ? '' : 'ob-alt'}" id="ob-tx">💊 Treat the second wave</button>
+    </div>`;
+}
+function obReportHtml(run) {
+  const st = obState(), left = obLeft(run);
+  const risen = Object.entries(run.ch3.resist).filter(([id, r]) => r > obBase(id) + 1e-9);
+  const medal = (icon, name, ok, why) => `<div class="ob-medal ${ok ? 'won' : ''}"><span>${icon}</span><div><b>${name}</b><small>${why}</small></div><em>${ok ? 'Earned' : 'Missed'}</em></div>`;
+  const com = obCommendation(run.file);
+  const fileRows = OUTBREAK.tests.map(t => {
+    const f = run.file[t.field] || {}, right = f.tested || f.value === OUTBREAK.truth[t.field];
+    const had = f.tested ? 'Lab result' : f.value ? `Guessed: ${t.options.find(o => o[0] === f.value)[1]}` : 'Left blank';
+    const pts = f.tested ? 2 : right ? 1 : 0;
+    return `<tr><td>${OB_FIELD[t.field]}</td><td>${had}</td><td>${OB_SHORT[t.field]}</td><td class="${pts ? 'ok' : 'no'}">${pts}</td><td>${f.tested ? '' : `The ${t.name.toLowerCase()} ($${t.cost}k) would have told you`}</td></tr>`;
+  }).join('');
+  return `<h3 class="sub">Town report · ${OUTBREAK.name}</h3>
+    <div class="ob-medals">
+      ${medal('🏥', 'Town protected', run.medals.includes('town'), run.ch3.success ? `Chapter 3: ${run.ch3.outcome}.` : `Chapter 3 fell short: ${run.ch3.outcome}.`)}
+      ${medal('🧫', 'Resistance contained', run.medals.includes('resist'), risen.length ? `${risen.map(([id, r]) => `${DRUG(id).name} rose to ${pct(r)}`).join(', ')} over the outbreak.` : 'No drug rose above its starting resistance.')}
+      ${medal('💰', 'Budget left', run.medals.includes('budget'), run.grant ? `You needed a ${money(run.grant)} emergency grant.` : `${money(left)} left ($20k needed).`)}
+      ${medal('📋', 'Case-file commendation', !!com.tier, `${com.tier ? OB_TIER[com.tier] : 'None'}: ${com.pts} of 10 points (tested 2, right guess 1).`)}
+    </div>
+    <h3 class="sub">Your case file, graded</h3>
+    <table class="cmp ob-grade"><tr><th></th><th>You had</th><th>The truth</th><th>Pts</th><th></th></tr>${fileRows}</table>
+    <h3 class="sub">What happened</h3>
+    <ol class="ob-timeline">${run.timeline.map(x => `<li>${x}</li>`).join('')}</ol>
+    <p style="color:var(--sci)">+${run.science} ⚗ science · best medals so far: ${st.best.medals.length ? st.best.medals.map(x => ({ town: '🏥', resist: '🧫', budget: '💰' })[x]).join(' ') : 'none'}${st.best.tier ? ` · best commendation ${OB_TIER[st.best.tier]}` : ''}</p>
+    <div class="btns"><button class="ghost" data-replay="3">↺ Replay chapter 3</button><button class="ghost" data-replay="2">↺ Replay chapter 2</button><button class="primary" id="ob-new">New outbreak run</button></div>`;
+}
+function renderOutbreak() {
+  const st = obState(), run = st.run, list = $('mission-list');
+  if (!run) {
+    list.innerHTML = `<div class="ob-card"><h2>🌊 ${OUTBREAK.name}</h2><p class="ob-lead">${OUTBREAK.intro}</p>
+      <p class="fine">Three linked chapters: investigate, respond, adapt. What you find, spend and breed carries forward. Every part and drug is unlocked here; budget and biology are the limits.</p>
+      ${st.runs ? `<p class="fine">Runs finished: ${st.runs} · best medals: ${st.best.medals.map(x => ({ town: '🏥', resist: '🧫', budget: '💰' })[x]).join(' ') || 'none'}</p>` : ''}
+      <button class="primary" id="ob-start">Start the outbreak ▶</button></div>`;
+    $('ob-start').onclick = () => { obStart(); renderOutbreak(); };
+    return;
+  }
+  const body = run.chapter === 1 ? obCh1Html(run) : run.chapter === 2 ? obCh2Html(run) : run.chapter === 3 ? obCh3Html(run) : obReportHtml(run);
+  list.innerHTML = `<div class="ob-card">${obProgressHtml(run)}${body}</div>`;
+  for (const b of list.querySelectorAll('[data-replay]')) b.onclick = () => obReplay(+b.dataset.replay);
+  for (const b of list.querySelectorAll('[data-test]')) b.onclick = () => {
+    const t = OUTBREAK.tests.find(x => x.field === b.dataset.test);
+    run.tests.push(t.field); run.spent.tests += t.cost;
+    run.file[t.field] = { tested: true, value: OUTBREAK.truth[t.field] };
+    persist(); renderOutbreak();
+  };
+  for (const sel of list.querySelectorAll('[data-field]')) sel.onchange = () => {
+    run.file[sel.dataset.field] = sel.value ? { value: sel.value } : {};
+    persist();
+  };
+  if ($('ob-file')) $('ob-file').onclick = () => {
+    const ran = OUTBREAK.tests.filter(t => run.tests.includes(t.field)), skipped = OUTBREAK.tests.filter(t => !run.tests.includes(t.field));
+    run.timeline.push(`Ch 1: ran ${ran.length ? ran.map(t => t.name.toLowerCase()).join(', ') : 'no tests'} (${money(run.spent.tests)})${skipped.length ? `; skipped ${skipped.map(t => t.name.toLowerCase()).join(', ')}` : ''}.`);
+    run.chapter = 2; st.snaps[2] = clone(run);
+    persist(); renderOutbreak();
+  };
+  if ($('ob-go')) $('ob-go').onclick = () => openLab(obMission(run));
+  for (const [id, route] of [['ob-vax', 'vax'], ['ob-tx', 'tx']]) if ($(id)) $(id).onclick = () => { run.route = route; persist(); openLab(obMission(run)); };
+  if ($('ob-new')) $('ob-new').onclick = () => { obStart(); renderOutbreak(); };
 }
 
 // ---------- sandbox ----------
@@ -1494,20 +1830,20 @@ function renderTxBrief() {
   const pre = Object.entries(m.preResist);
   $('brief').innerHTML = `
     <div><h2>${m.name}</h2><p class="blurb">${m.blurb}</p></div>
-    <div class="conds">
+    ${m.outbreak ? obBriefHtml(m) : `<div class="conds">
       <div><span>Pathogen</span><span>${m.pathogen} (${m.kind})</span></div>
       <div><span>Lab resistance test</span><span style="color:${pre.length ? 'var(--bad)' : 'inherit'}">${pre.length ? pre.map(([id, f]) => `${pct(f)} resist ${DRUG(id).name}`).join(', ') : 'Nothing found'}</span></div>
       <div><span>Mutation rate</span><span style="color:${m.mutation >= 1e-5 ? 'var(--bad)' : 'inherit'}">${m.mutation >= 1e-5 ? 'Very high' : m.mutation >= 1e-7 ? 'Normal' : 'Low'}</span></div>
       <div><span>Patient</span><span style="color:${m.adherence < 1 || m.critical < 1e9 ? 'var(--warn)' : 'inherit'}">${m.adherence < 1 ? `Misses ~${pct(1 - m.adherence)} of doses` : m.critical < 1e9 ? 'High risk (asthma)' : 'Reliable'}</span></div>
       <div><span>Goal</span><span>${m.cureBelow > 1 ? 'Undetectable' : 'Cured'} by day ${m.days}</span></div>
-    </div>
+    </div>`}
     <div>
       ${meter('Killing power (lab estimate)', power < .4 ? 'Weak' : power < .8 ? 'Moderate' : power < 1.2 ? 'Strong' : 'Very strong', power / 1.6, 'var(--accent)')}
       ${meter('Coverage between doses', cover < .35 ? 'Big gaps' : cover < .75 ? 'Some gaps' : 'Steady', cover, cover < .35 ? 'var(--bad)' : cover < .75 ? 'var(--warn)' : 'var(--good)')}
       ${meter('Resistance barrier', drugs.length === 2 ? 'Combo: very high' : barrier < .4 ? 'Low' : barrier < .7 ? 'Medium' : 'High', barrier, '#7ee0c3')}
-      ${meter('Side-effect risk', `${pct(side)} / ${pct(m.maxSide)} limit${tg.sideT != null ? ` · 🎯 ${pct(tg.sideT)}` : ''}`, side, side > m.maxSide ? 'var(--bad)' : side > m.maxSide * .8 ? 'var(--warn)' : 'var(--good)', m.maxSide, tg.sideT)}
+      ${sideMeter(m, side, tg)}
       ${m.sandbox ? meter('Cost (no budget in sandbox)', `$${Math.round(cost)}k`, cost / 150, 'var(--sci)') : meter('Cost', `$${Math.round(cost)}k / $${m.budget}k${tg.costT != null ? ` · 🎯 $${tg.costT}k` : ''}`, cost / m.budget, over ? 'var(--bad)' : 'var(--sci)', null, tg.costT != null ? tg.costT / m.budget : null)}
-      ${tg.note}
+      ${tg.note}${obBudgetNote(m)}
     </div>
     <button id="launch" class="primary" ${over ? 'disabled' : ''}>${over ? 'Over budget' : 'Start Treatment ▶'}</button>
     <button id="back-menu" class="ghost">← Mission Control</button>
@@ -1578,20 +1914,20 @@ function renderBrief() {
   const over = !m.sandbox && cost > m.budget, tg = targetMeters(m, cost, side);
   $('brief').innerHTML = `
     <div><h2>${m.name}</h2><p class="blurb">${m.blurb}</p></div>
-    <div class="conds">
+    ${m.outbreak ? obBriefHtml(m) : `<div class="conds">
       <div><span>Pathogen</span><span>${m.pathogen}${m.resp ? ' (respiratory)' : ''}</span></div>
       <div><span>Strain drift</span><span style="color:${m.drift >= .3 ? 'var(--bad)' : 'inherit'}">${m.drift === 0 ? 'None' : m.drift < .3 ? 'Low' : 'High'}</span></div>
       <div><span>Cold chain</span><span style="color:${m.cold ? 'inherit' : 'var(--bad)'}">${m.cold ? 'Available' : 'None'}</span></div>
       <div><span>Exposure</span><span>Day ${m.challengeDay}</span></div>
       <div><span>Goal</span><span>${pct(m.minProtect)} protected</span></div>
-    </div>
+    </div>`}
     <div>
       ${meter('Immune punch (lab estimate)', punch < .35 ? 'Weak' : punch < .7 ? 'Moderate' : punch < 1.1 ? 'Strong' : 'Very strong', punch / 1.4, 'var(--accent)')}
       ${meter('Staying power', mem < .4 ? 'Short' : mem < .65 ? 'Medium' : 'Long', mem, '#7ee0c3')}
       ${meter('Shelf stability', pct(c.stab), c.stab, m.cold ? '#7c8aa5' : c.stab < .6 ? 'var(--bad)' : 'var(--good)')}
-      ${meter('Side-effect risk', `${pct(side)} / ${pct(m.maxSide)} limit${tg.sideT != null ? ` · 🎯 ${pct(tg.sideT)}` : ''}`, side, side > m.maxSide ? 'var(--bad)' : side > m.maxSide * .8 ? 'var(--warn)' : 'var(--good)', m.maxSide, tg.sideT)}
+      ${sideMeter(m, side, tg)}
       ${m.sandbox ? meter('Cost (no budget in sandbox)', `$${Math.round(cost)}k`, cost / 150, 'var(--sci)') : meter('Cost', `$${Math.round(cost)}k / $${m.budget}k${tg.costT != null ? ` · 🎯 $${tg.costT}k` : ''}`, cost / m.budget, over ? 'var(--bad)' : 'var(--sci)', null, tg.costT != null ? tg.costT / m.budget : null)}
-      ${tg.note}
+      ${tg.note}${obBudgetNote(m)}
     </div>
     <button id="launch" class="primary" ${over ? 'disabled' : ''}>${over ? 'Over budget' : 'Begin Trial ▶'}</button>
     <button id="back-menu" class="ghost">← Mission Control</button>
@@ -2314,7 +2650,7 @@ function showResult() {
   if (inspected) closeInspect();
   const s = trial.sim, m = trial.mission;
   let earned = 0, newly = [];
-  if (!m.sandbox) {
+  if (!m.sandbox && !m.outbreak) {
     const rec = save.missions[m.id] || { stars: 0, done: false };
     if (s.success) {
       earned = rec.done ? Math.round(m.reward * .25) : m.reward; rec.done = true;
@@ -2352,8 +2688,10 @@ function showResult() {
     ${challengeResultHtml(m, s, newly)}
     ${compareHtml(s, m)}
     ${!tx && !s.halted ? breakdownHtml(s) : ''}
-    ${m.sandbox ? '' : `<p style="color:var(--sci);margin:0 0 16px">+${earned} ⚗ science${s.success ? '' : ' (failures are data too)'}</p>`}
-    <div class="btns"><button class="ghost" id="r-lab" title="Back to the lab with this exact design loaded">↺ Tweak this design</button><button class="primary" id="r-menu">${m.sandbox ? '🧪 Edit pathogen' : 'Mission Control'}</button></div>
+    ${m.sandbox || m.outbreak ? '' : `<p style="color:var(--sci);margin:0 0 16px">+${earned} ⚗ science${s.success ? '' : ' (failures are data too)'}</p>`}
+    ${m.outbreak
+      ? `<div class="btns"><button class="ghost" id="r-lab" title="Back to the lab with this exact design loaded">↺ Try this chapter again</button><button class="primary" id="r-ob">${m.id === 'ob-ch2' ? 'Continue to chapter 3 ▶' : 'See the town report ▶'}</button></div>`
+      : `<div class="btns"><button class="ghost" id="r-lab" title="Back to the lab with this exact design loaded">↺ Tweak this design</button><button class="primary" id="r-menu">${m.sandbox ? '🧪 Edit pathogen' : 'Mission Control'}</button></div>`}
     ${trial.changeRx || (!tx && trial.baseSim) ? '<button class="ghost r-switched" id="r-switched">↺ Start from the plan you switched to</button>' : ''}`;
   $('result').classList.remove('hidden');
   $('r-lab').onclick = () => { $('result').classList.add('hidden'); openLab(m); };
@@ -2362,7 +2700,8 @@ function showResult() {
     if (tx) rx = { ...trial.changeRx }; else design = { ...trial.design };
     $('result').classList.add('hidden'); openLab(m);
   };
-  $('r-menu').onclick = () => { $('result').classList.add('hidden'); goMenu(); };
+  if ($('r-menu')) $('r-menu').onclick = () => { $('result').classList.add('hidden'); goMenu(); };
+  if ($('r-ob')) $('r-ob').onclick = () => { obCommit(m, s); $('result').classList.add('hidden'); campaign = 'outbreak'; goMenu(); };
 }
 
 // ---------- menu backdrop activity ----------

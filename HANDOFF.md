@@ -34,9 +34,9 @@ Jacob's other site (Golden Crumb Bakery) deploys from GitHub to Netlify automati
 
 After that, every push to `main` redeploys.
 
-## Next up: Outbreak campaign (design stage)
+## Outbreak campaign (built)
 
-A 4th tab with three linked chapters (investigate → respond → adapt) where choices carry forward. The draft design is in [`docs/outbreak-campaign.md`](docs/outbreak-campaign.md). Nothing is built yet: agree the sketch and its open questions with Jacob before writing code.
+The 🌊 Outbreak tab runs Harbor Fever: investigate (5 paid lab tests, case file) → respond (treatment) → adapt (vaccinate or treat a second wave shaped by chapter 2) → town report (3 medals plus a case-file commendation). Design and rules: [`docs/outbreak-campaign.md`](docs/outbreak-campaign.md) (v3, as built). The next planned step is a second outbreak on the same framework (a fast-mutating virus), only after Harbor Fever has been playtested.
 
 ## Idea backlog
 

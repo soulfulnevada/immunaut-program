@@ -1,12 +1,13 @@
 // Brute-forces every design against every mission, using the model code
-// embedded in index.html between the MODEL / TX-MODEL markers.
+// embedded in index.html between the MODEL / TX-MODEL / OUTBREAK-MODEL markers.
 // Usage: node tools/balance.mjs
 import fs from 'fs';
 
 const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const between = (a, b) => html.slice(html.indexOf(a), html.indexOf(b));
-const src = between('// MODEL-START', '// MODEL-END') + between('// TX-MODEL-START', '// TX-MODEL-END');
-const M = new Function(src + 'return { PARTS, MISSIONS, simulate, DRUGS, TX_MISSIONS, simulateTx, txCheckpointDay, challengeMet, CHALLENGE_TEXT };')();
+const src = ['MODEL', 'TX-MODEL', 'OUTBREAK-MODEL'].map(k => between(`// ${k}-START`, `// ${k}-END`)).join('\n');
+const M = new Function(src + `return { PARTS, MISSIONS, simulate, DRUGS, TX_MISSIONS, simulateTx, txCheckpointDay, challengeMet, CHALLENGE_TEXT,
+  OUTBREAK, OB_WAVES, obCh2Mission, obCh3TxMission, obCh3VaxMission, obCarry, obResistAfter, obCommendation, obResistContained };`)();
 
 const starter = list => list.filter(p => p.unlock === 0).map(p => p.id);
 const every = list => list.map(p => p.id);
@@ -168,4 +169,56 @@ for (const [m, rx0, want, lesson] of CREDIT) {
   const ok = s.effect === want; if (!ok) broken++;
   console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${lesson}${ok ? '' : ` (got ${s.effect})`}`);
 }
+
+// Outbreak campaign (docs/outbreak-campaign.md). The carry-forward rules land on a finite set of chapter 3
+// starting states, so "no dead ends" is checked exhaustively over that set, not sampled.
+console.log('\nOUTBREAK CHECKS');
+const ob = (ok, label) => { if (!ok) broken++; console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${label}`); };
+const allRegs = [];
+for (const a of allIds(M.DRUGS)) for (const b of [null, ...allIds(M.DRUGS)]) { if (b && b <= a) continue;
+  for (const dose of ['low', 'std', 'high']) for (const freq of [1, 2, 3]) for (const dur of [3, 5, 7, 10, 14]) allRegs.push({ a, b, dose, freq, dur }); }
+const ch2 = M.obCh2Mission(M.OUTBREAK.budget);
+const untreatedCh2 = M.simulateTx({ a: null, b: null, dose: 'std', freq: 1, dur: 0 }, ch2);
+ob(untreatedCh2.hosp >= 4.5 && untreatedCh2.hosp < 5.5, `growth-curve clue "critical around day 5" matches the engine (day ${untreatedCh2.hosp?.toFixed(1)})`);
+// rules behave, exhaustively over chapter 2 starting regimens
+const LEVELS = { pen: [.3, .45, .6] }, OTHER = [0, .15, .6];
+let rulesOk = true;
+for (const rx of allRegs) {
+  const s = M.simulateTx(rx, ch2), c = M.obCarry(s, ch2);
+  for (const [id, r] of Object.entries(c.resist)) {
+    const allowed = LEVELS[id] || OTHER, attacks = M.DRUGS.find(d => d.id === id).target === 'bacteria';
+    if (!allowed.some(v => Math.abs(v - r) < 1e-9) || (!attacks && r > 0)) rulesOk = false;
+  }
+  if (!(c.wave in M.OB_WAVES)) rulesOk = false;
+}
+ob(rulesOk, 'every chapter 2 regimen carries forward allowed values only (antivirals never gain resistance)');
+// every reachable chapter 3 state is winnable at the $60k floor, on both routes
+const antibiotics = M.DRUGS.filter(d => d.target === 'bacteria').map(d => d.id);
+let states = [{}];
+for (const id of antibiotics) states = states.flatMap(st => (LEVELS[id] || OTHER).map(v => ({ ...st, [id]: v })));
+let dead = 0;
+for (const wave of Object.keys(M.OB_WAVES)) for (const resist of states) {
+  const m = M.obCh3TxMission({ wave, resist }, M.OUTBREAK.floor);
+  if (!allRegs.some(rx => { const s = M.simulateTx(rx, m); return s.success && s.cost <= M.OUTBREAK.floor; })) dead++;
+}
+ob(dead === 0, `treatment route: all ${states.length * 4} chapter 3 states winnable within $${M.OUTBREAK.floor}k${dead ? ` (${dead} dead ends)` : ''}`);
+for (const wave of Object.keys(M.OB_WAVES)) {
+  const m = M.obCh3VaxMission({ wave, resist: {} }, M.OUTBREAK.floor, false);
+  let win = false;
+  for (const carrier of allIds(M.PARTS.carrier)) for (const antigen of allIds(M.PARTS.antigen)) for (const adjuvant of allIds(M.PARTS.adjuvant))
+    for (const route of allIds(M.PARTS.route)) for (const doses of [1, 2, 3]) { const s = M.simulate({ carrier, antigen, adjuvant, route, doses }, m); if (s.success && s.cost <= M.OUTBREAK.floor) win = true; }
+  ob(win, `vaccine route: ${wave} wave winnable within $${M.OUTBREAK.floor}k`);
+}
+// consequences bite, and the campaign's lessons hold
+const base = { pen: .3 };
+const tet = resist => M.simulateTx({ a: 'tetra', b: null, dose: 'std', freq: 1, dur: 10 }, M.obCh3TxMission({ wave: 'normal', resist }, 100)).success;
+ob(tet(base) && !tet({ ...base, tetra: .6 }), 'bred resistance makes the same drug fail later (Growth Blocker: clean wins, bred to 60% fails)');
+ob(M.obCarry(M.simulateTx({ a: 'pen', b: null, dose: 'std', freq: 3, dur: 10 }, ch2), ch2).resist.pen === .6, 'starting on penicillin without the sensitivity test breeds penicillin resistance');
+const vaxLarge = antigen => M.simulate({ carrier: 'vector', antigen, adjuvant: 'none', route: 'nasal', doses: 2 }, M.obCh3VaxMission({ wave: 'large', resist: {} }, 100, true)).success;
+ob(!vaxLarge('spike') && vaxLarge('core'), 'skipping sequencing hurts: a spike vaccine misses the large wave where a conserved-core one passes');
+ob(M.obResistContained(base) && !M.obResistContained({ ...base, pen: .45 }), 'resistance medal: starting levels pass, any rise fails');
+const file = (tested, guessRight) => Object.fromEntries(M.OUTBREAK.tests.map((t, i) => [t.field, i < tested ? { tested: true, value: M.OUTBREAK.truth[t.field] } : { value: i < tested + guessRight ? M.OUTBREAK.truth[t.field] : 'wrong' }]));
+ob(M.obCommendation(file(5, 0)).tier === 'gold' && M.obCommendation(file(4, 1)).tier === 'gold' && M.obCommendation(file(3, 1)).tier === 'silver'
+  && M.obCommendation(file(0, 5)).tier === 'bronze' && M.obCommendation(file(0, 3)).tier === null, 'commendation tiers: tested 2, right guess 1; gold 9-10, silver 7-8, bronze 4-6');
+
 process.exitCode = broken ? 1 : 0;
