@@ -118,6 +118,9 @@
   #chart { width: 100%; height: 120px; display: block; }
   .legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; color: var(--muted); margin-top: 6px; }
   .legend i { display: inline-block; width: 10px; height: 3px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+  .key { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 8px; padding-top: 8px; border-top: 1px solid #ffffff10; font-size: 11px; color: var(--muted); }
+  .key span { display: inline-flex; align-items: center; gap: 4px; }
+  .key svg { width: 16px; height: 16px; }
   .temp { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
   .temp b { font: 700 18px "Exo 2", sans-serif; }
 
@@ -147,6 +150,13 @@
   .clue { background: #4fd1ff12; border: 1px solid #4fd1ff44; border-radius: 10px; padding: 10px 12px; margin-bottom: 14px; font-size: 13px; color: #d6e6fb; }
   .clue b { display: block; color: var(--accent); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 2px; }
   .modal.cp { background: #05080f66; }
+  .cmp { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 6px; }
+  .cmp th, .cmp td { padding: 6px 8px; text-align: left; border-bottom: 1px solid #ffffff10; }
+  .cmp th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+  .cmp td:first-child { color: var(--muted); }
+  .cmp .you { background: #4fd1ff10; }
+  .cmp th.you { color: var(--accent); }
+  .cmp-sum { margin: 0 0 14px; font-size: 13px; color: #d6e6fb; }
   .cp-kicker { color: var(--accent); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .1em; }
   .cp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin: 14px 0 10px; }
   .cp-grid > div { background: #ffffff08; border-radius: 10px; padding: 10px; }
@@ -228,6 +238,7 @@
     <div class="temp"><h3 id="vitals-title">Volunteer vitals</h3><b id="temp">37.0°C</b></div>
     <canvas id="chart" width="600" height="220"></canvas>
     <div class="legend" id="legend"></div>
+    <div class="key" id="key"></div>
   </div>
 </section>
 
@@ -238,6 +249,7 @@
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // MODEL-START
 const PARTS = {
@@ -453,6 +465,16 @@ function txSide(rx, m, change) {
   }, 0);
 }
 
+// The same patient with no treatment at all, cached per mission. Used to tell
+// "the drug worked" apart from "the immune system won on its own".
+const untreatedCache = new WeakMap();
+function untreated(m) {
+  if (!untreatedCache.has(m)) untreatedCache.set(m, simulateTx({ a: null, b: null, dose: 'std', freq: 1, dur: 0 }, m));
+  return untreatedCache.get(m);
+}
+// Days are counted like the trial log: day N is everything from N.0 up to N+1.
+const dayOf = t => Math.floor(t);
+
 function simulateTx(rx, m, change = null) {
   const finalRx = change ? change.rx : rx;
   const sched = txSchedule(rx, m, change);
@@ -520,11 +542,11 @@ function simulateTx(rx, m, change = null) {
   const notes = [];
   drugs.forEach((dr, j) => { if (!works[j]) notes.push(`${dr.name} is ${dr.cls === 'Antibiotic' ? 'an antibiotic, and antibiotics do nothing to viruses' : 'an antiviral, and antivirals do nothing to bacteria'}. The patient got the side effects with none of the benefit.`); });
   const gappy = fin.filter(j => works[j] && !drugs[j].single && Math.exp(-Math.LN2 * 24 / finalRx.freq / drugs[j].hl) < .02 && finalRx.freq < 3).map(j => drugs[j]);
-  if (hosp !== null) notes.push(`${resistDominant ? 'A resistant strain' : 'The infection'} overwhelmed the patient on day ${Math.floor(hosp)}, and they were hospitalized.`);
+  if (hosp !== null) notes.push(`${resistDominant ? 'A resistant strain' : 'The infection'} overwhelmed the patient on day ${dayOf(hosp)}, and they were hospitalized.`);
   const relapsed = !resistDominant && works.some(Boolean) && (hosp !== null ? hosp > lastDose + .5 : final >= m.cureBelow);
   if (relapsed) {
     if (finalRx.dose === 'low') notes.push('The low dose only slowed the infection down. A standard dose would have finished it.');
-    else if (!gappy.length && m.adherence >= 1) notes.push(`Treatment stopped on day ${Math.ceil(lastDose)}, before every microbe was gone. The survivors bounced back, so a longer course would finish the job.`);
+    else if (!gappy.length && m.adherence >= 1) notes.push(`Treatment stopped on day ${dayOf(lastDose)}, before every microbe was gone. The survivors bounced back, so a longer course would finish the job.`);
   } else if (hosp === null && final >= m.cureBelow && resistDominant) notes.push('A resistant strain survived treatment and took over.');
   if (resisted) {
     if (fin.length === 1 && works[fin[0]] && !pre[fin[0]]) notes.push('With only one drug, a single lucky mutation is enough to escape. Two drugs that work in different ways make that almost impossible.');
@@ -535,7 +557,18 @@ function simulateTx(rx, m, change = null) {
   const preHit = fin.find(j => pre[j] > 0);
   if (preHit !== undefined && fin.length === 1) notes.push(`Lab tests showed ${pct(pre[preHit])} of these bacteria already resist ${drugs[preHit].name}.`);
   if (tooSick) notes.push(`Side effects were too harsh: ${pct(side)}, limit ${pct(m.maxSide)}. Try lower doses, a shorter course or a gentler drug.`);
-  if (success) notes.unshift(`${m.pathogen} ${m.cureBelow > 1 ? 'is undetectable' : 'was cleared'}${cleared !== null ? ` by day ${Math.ceil(cleared)}` : ''}.`);
+  // credit the treatment only for what the immune system wouldn't have done alone
+  const base = drugs.length ? untreated(m) : null;
+  const baseOk = !!base && base.hosp === null && base.final < m.cureBelow;
+  const effect = !base || !success ? null
+    : !baseOk ? 'saved'
+    : cleared !== null && base.cleared !== null && dayOf(cleared) < dayOf(base.cleared) && works.some(Boolean) ? 'faster' : 'none';
+  const gone = m.cureBelow > 1 ? 'undetectable' : 'cleared';
+  const when = cleared !== null ? ` on day ${dayOf(cleared)}` : '';
+  if (effect === 'saved') notes.unshift(`${m.pathogen} was ${gone}${when}. Untreated, the patient ${base.hosp !== null ? `would have been hospitalized on day ${dayOf(base.hosp)}` : `would still be sick on day ${m.days}`}, so the treatment made the difference.`);
+  else if (effect === 'faster') notes.unshift(`${m.pathogen} was ${gone}${when}, ${dayOf(base.cleared) - dayOf(cleared)} days sooner than the immune system alone would have managed (day ${dayOf(base.cleared)}).`);
+  else if (effect === 'none') notes.unshift(`The patient's immune system beat ${m.pathogen} on its own: untreated, it was gone by day ${dayOf(base.cleared)}. The treatment added side effects and cost without speeding recovery.`);
+  else if (success) notes.unshift(`${m.pathogen} was ${gone}${when}.`);
   const bonusClean = !resisted, bonusCheap = cost <= m.budget * .6;
   const stars = success ? 1 + (bonusClean ? 1 : 0) + (bonusCheap ? 1 : 0) : 0;
   if (success && !bonusClean) notes.push('★ Bonus: cure it without resistant mutants spreading.');
@@ -543,7 +576,7 @@ function simulateTx(rx, m, change = null) {
 
   const at = T => { if (!hist.length) return { S: 0, R: 0, C: 0, total: 0 }; const i = Math.min(hist.length - 1, Math.max(0, Math.round(T / (dt * 5)))); return hist[i]; };
   return { drugs, ids, doses, works, hist, at, hosp, cleared, final, resisted, resistDominant, side, cost, success, stars, notes, lastDose,
-    startLoad, snap, change, end: hosp !== null ? hosp : m.days, halted: hosp !== null };
+    startLoad, snap, change, effect, untreated: base, end: hosp !== null ? hosp : m.days, halted: hosp !== null };
 }
 // TX-MODEL-END
 
@@ -681,21 +714,63 @@ class Pool {
 const rnd = (a, b) => a + Math.random() * (b - a);
 const randIn = r => new THREE.Vector3(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1)).normalize().multiplyScalar(Math.cbrt(Math.random()) * r);
 
-const dcGeo = new THREE.OctahedronGeometry(.9, 0), dcMat = new THREE.MeshStandardMaterial({ color: 0x9cff6b, emissive: 0x2a5a10, flatShading: true });
-const dcs = new Pool(14, () => { const g = new THREE.Mesh(dcGeo, dcMat); g.scale.setScalar(1); return g; },
+// ---------- shapes ----------
+// Each kind of actor gets its own silhouette, merged into one geometry so a swarm stays cheap to draw.
+const Y_UP = new THREE.Vector3(0, 1, 0);
+function placed(g, pos, dir = Y_UP, scale = 1) {
+  const q = new THREE.Quaternion().setFromUnitVectors(Y_UP, dir.clone().normalize());
+  return g.clone().toNonIndexed().applyMatrix4(new THREE.Matrix4().compose(pos, q, new THREE.Vector3(scale, scale, scale)));
+}
+const V = (x, y, z) => new THREE.Vector3(x, y, z);
+// virus: faceted shell, spikes with knobbed tips
+const virusGeo = mergeGeometries([
+  placed(new THREE.IcosahedronGeometry(.8, 0), V(0, 0, 0)),
+  ...fib(12).flatMap(n => [placed(new THREE.ConeGeometry(.12, .55, 6), n.clone().multiplyScalar(.95), n), placed(new THREE.SphereGeometry(.14, 8, 6), n.clone().multiplyScalar(1.25))]),
+]);
+// antibody: the textbook Y
+const yGeo = mergeGeometries([
+  placed(new THREE.CylinderGeometry(.08, .08, .6, 6), V(0, -.3, 0)),
+  placed(new THREE.CylinderGeometry(.08, .08, .55, 6), V(-.18, .2, 0), V(-.6, 1, 0)),
+  placed(new THREE.CylinderGeometry(.08, .08, .55, 6), V(.18, .2, 0), V(.6, 1, 0)),
+]);
+// drug molecule: a tiny capsule
+const pillGeo = placed(new THREE.CapsuleGeometry(.15, .38, 4, 8), V(0, 0, 0), V(1, 1, 0));
+// dendritic cell: a body with long branching arms
+const dcGeo = mergeGeometries([
+  placed(new THREE.OctahedronGeometry(.75, 0), V(0, 0, 0)),
+  ...[V(1, 0, 0), V(-1, 0, 0), V(0, 1, 0), V(0, -1, 0), V(0, 0, 1), V(0, 0, -1), V(1, 1, 1), V(-1, -1, 1)]
+    .map(d => placed(new THREE.ConeGeometry(.13, 1.3, 5), d.clone().normalize().multiplyScalar(.95), d)),
+]);
+// T cell: a sphere covered in receptor bumps (B cells stay smooth)
+const tGeo = mergeGeometries([
+  placed(new THREE.SphereGeometry(.6, 16, 12), V(0, 0, 0)),
+  ...fib(16).map(n => placed(new THREE.SphereGeometry(.13, 8, 6), n.clone().multiplyScalar(.62))),
+]);
+// flat Y and capsule glyphs for the big bloodstream swarms (points always face the camera)
+function glyph(draw) {
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d'); g.strokeStyle = '#fff'; g.lineCap = 'round'; g.lineJoin = 'round';
+  draw(g);
+  return new THREE.CanvasTexture(c);
+}
+const yTex = glyph(g => { g.lineWidth = 8; g.beginPath(); g.moveTo(32, 58); g.lineTo(32, 32); g.lineTo(13, 9); g.moveTo(32, 32); g.lineTo(51, 9); g.stroke(); });
+const pillTex = glyph(g => { g.lineWidth = 20; g.beginPath(); g.moveTo(19, 45); g.lineTo(45, 19); g.stroke(); });
+
+const dcMat = new THREE.MeshStandardMaterial({ color: 0x9cff6b, emissive: 0x2a5a10, flatShading: true });
+const dcs = new Pool(14, () => new THREE.Mesh(dcGeo, dcMat),
   it => { it.u = rnd(0, .02); it.off = randIn(1.2); it.ang = rnd(0, 6.28); },
   (it, dt, days) => {
     if (it.u < .245) { it.u = Math.min(.245, it.u + days * .05); it.mesh.position.copy(curve.getPointAt(it.u)).add(it.off); }
     else { it.ang += dt * .6; it.mesh.position.set(NODE.x + Math.cos(it.ang + it.i) * 6, NODE.y + Math.sin(it.ang * 1.3 + it.i) * 2.5, NODE.z + Math.sin(it.ang + it.i) * 4.5); }
-    it.mesh.rotation.x += dt; it.mesh.rotation.y += dt * 1.4;
+    it.mesh.rotation.x += dt * .5; it.mesh.rotation.y += dt * .7;
   });
 
-const bGeo = new THREE.SphereGeometry(.7, 16, 12), bMat = new THREE.MeshStandardMaterial({ color: 0x5aa8ff, emissive: 0x0d2850, roughness: .4 });
+const bGeo = new THREE.SphereGeometry(.7, 16, 12), bMat = new THREE.MeshStandardMaterial({ color: 0x5aa8ff, emissive: 0x0d2850, roughness: .25 });
 const bcells = new Pool(40, () => new THREE.Mesh(bGeo, bMat),
   it => { it.home = randIn(5); it.home.x *= 1.3; it.home.y *= .8; it.ph = rnd(0, 6.28); },
   (it, dt, days, t) => { it.mesh.position.set(it.home.x + Math.sin(t * .8 + it.ph) * .4, it.home.y + Math.cos(t * .9 + it.ph) * .4, it.home.z); });
 
-const tGeo = new THREE.SphereGeometry(.6, 16, 12), tMat = new THREE.MeshStandardMaterial({ color: 0xffa94d, emissive: 0x4a2400, roughness: .4 });
+const tMat = new THREE.MeshStandardMaterial({ color: 0xffa94d, emissive: 0x4a2400, roughness: .5 });
 const tcells = new Pool(30, () => new THREE.Mesh(tGeo, tMat),
   it => { it.home = randIn(5); it.home.x *= 1.3; it.home.y *= .8; it.ph = rnd(0, 6.28); it.u = .25; },
   (it, dt, days, t) => {
@@ -707,26 +782,28 @@ const tcells = new Pool(30, () => new THREE.Mesh(tGeo, tMat),
     } else {
       it.mesh.position.set(it.home.x + Math.cos(t * .7 + it.ph) * .5, it.home.y + Math.sin(t + it.ph) * .5, it.home.z);
     }
+    it.mesh.rotation.y += dt * .4;
   });
 
-const virusGeo = new THREE.IcosahedronGeometry(.8, 0), virusMat = new THREE.MeshStandardMaterial({ color: 0xe05cff, emissive: 0x5a0a60, flatShading: true });
-const spikeGeo = new THREE.ConeGeometry(.15, .7, 6);
-function makeVirus() {
-  const g = new THREE.Mesh(virusGeo, virusMat);
-  for (const n of fib(12)) { const s = new THREE.Mesh(spikeGeo, virusMat); s.position.copy(n).multiplyScalar(.85); s.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), n); g.add(s); }
-  return g;
-}
-const viruses = new Pool(60, makeVirus,
-  it => { it.p = SITE.clone().add(randIn(5)); it.ph = rnd(0, 6.28); },
-  (it, dt, days, t) => { it.mesh.position.set(it.p.x + Math.sin(t * 2 + it.ph) * .3, it.p.y + Math.cos(t * 1.7 + it.ph) * .3, it.p.z); it.mesh.rotation.y += dt * 2; });
+// microbes get their own material so each one can show how coated it is
+const virusMat = new THREE.MeshStandardMaterial({ color: 0xe05cff, emissive: 0x5a0a60, flatShading: true });
+const COATED = new THREE.Color(0x8a93a6);
+const coatable = mat => { const m = mat.clone(); m.userData.base = mat.color.clone(); m.userData.glow = mat.emissiveIntensity; return m; };
+const viruses = new Pool(60, () => new THREE.Mesh(virusGeo, coatable(virusMat)),
+  it => { it.p = SITE.clone().add(randIn(5)); it.ph = rnd(0, 6.28); it.coat = 0; },
+  (it, dt, days, t) => {
+    const calm = 1 - it.coat * .85; // coated viruses stop tumbling
+    it.mesh.position.set(it.p.x + Math.sin(t * 2 + it.ph) * .3 * calm, it.p.y + Math.cos(t * 1.7 + it.ph) * .3 * calm, it.p.z);
+    it.mesh.rotation.y += dt * 2 * calm;
+  });
 
-// antibodies: points flowing through the blood vessel
+// antibodies: Y glyphs flowing through the blood vessel
 const AB_MAX = 1400;
 const abGeo = new THREE.BufferGeometry();
 const abPos = new Float32Array(AB_MAX * 3);
 abGeo.setAttribute('position', new THREE.BufferAttribute(abPos, 3));
 const abData = [...Array(AB_MAX)].map(() => ({ u: Math.random(), off: randIn(1.4), sp: rnd(.015, .04) }));
-const abPoints = new THREE.Points(abGeo, new THREE.PointsMaterial({ color: 0x4fd1ff, size: .35, transparent: true, opacity: .9, depthWrite: false, blending: THREE.AdditiveBlending }));
+const abPoints = new THREE.Points(abGeo, new THREE.PointsMaterial({ color: 0x4fd1ff, map: yTex, size: .9, transparent: true, alphaTest: .3, depthWrite: false, blending: THREE.AdditiveBlending }));
 abGeo.setDrawRange(0, 0); world.add(abPoints);
 function updateAntibodies(dt, level) {
   const n = Math.round(clamp(level, 0, 1) * AB_MAX);
@@ -740,24 +817,21 @@ function updateAntibodies(dt, level) {
 }
 
 // treatment microbes: susceptible (green bacteria / purple virus) and resistant (orange)
-const siteInit = it => { it.p = SITE.clone().add(randIn(5)); it.ph = rnd(0, 6.28); it.rot = randIn(1); };
+const siteInit = it => { it.p = SITE.clone().add(randIn(5)); it.ph = rnd(0, 6.28); it.rot = randIn(1); it.coat = 0; };
 const siteStep = (it, dt, days, t) => {
-  it.mesh.position.set(it.p.x + Math.sin(t * 1.5 + it.ph) * .35, it.p.y + Math.cos(t * 1.3 + it.ph) * .35, it.p.z);
-  it.mesh.rotation.x += dt * it.rot.x; it.mesh.rotation.y += dt * (1 + it.rot.y);
+  const calm = 1 - (it.coat || 0) * .85;
+  it.mesh.position.set(it.p.x + Math.sin(t * 1.5 + it.ph) * .35 * calm, it.p.y + Math.cos(t * 1.3 + it.ph) * .35 * calm, it.p.z);
+  it.mesh.rotation.x += dt * it.rot.x * calm; it.mesh.rotation.y += dt * (1 + it.rot.y) * calm;
 };
 const rodGeo = new THREE.CapsuleGeometry(.4, 1.1, 4, 10);
-const bactS = new Pool(60, () => new THREE.Mesh(rodGeo, new THREE.MeshStandardMaterial({ color: 0x5be38f, emissive: 0x0f4020, roughness: .5 })), siteInit, siteStep);
+const bactS = new Pool(60, () => new THREE.Mesh(rodGeo, coatable(new THREE.MeshStandardMaterial({ color: 0x5be38f, emissive: 0x0f4020, roughness: .5 }))), siteInit, siteStep);
 const resMat = new THREE.MeshStandardMaterial({ color: 0xff8c2a, emissive: 0xb03a00, emissiveIntensity: .7, roughness: .4 });
 // resistant microbes wear a glowing shield that drug molecules bounce off
 const shieldGeo = new THREE.SphereGeometry(1.25, 20, 14);
 const shieldMat = new THREE.MeshBasicMaterial({ color: 0xff8c2a, transparent: true, opacity: .11, blending: THREE.AdditiveBlending, depthWrite: false });
 const withShield = m => { const sh = new THREE.Mesh(shieldGeo, shieldMat); sh.scale.set(1, m.geometry === rodGeo ? 1.35 : 1, 1); m.add(sh); return m; };
 const bactR = new Pool(60, () => withShield(new THREE.Mesh(rodGeo, resMat)), siteInit, siteStep);
-const virR = new Pool(60, () => {
-  const g = new THREE.Mesh(virusGeo, resMat);
-  for (const n of fib(12)) { const s = new THREE.Mesh(spikeGeo, resMat); s.position.copy(n).multiplyScalar(.85); s.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), n); g.add(s); }
-  return withShield(g);
-}, siteInit, siteStep);
+const virR = new Pool(60, () => withShield(new THREE.Mesh(virusGeo, resMat)), siteInit, siteStep);
 
 // pops: a quick expanding flash where a microbe is destroyed
 const bursts = [...Array(40)].map(() => {
@@ -784,9 +858,9 @@ virR.onKill = bactR.onKill = it => burst(it.mesh.position, 0xffc078);
 
 // hunters: antibodies (vaccine) or drug molecules (treatment) that seek out microbes at the infection site
 const hunterMats = [0, 1].map(() => new THREE.MeshStandardMaterial({ color: 0x4fd1ff, emissive: 0x4fd1ff, emissiveIntensity: .8 }));
-const hunterGeo = new THREE.TetrahedronGeometry(.32);
 const huntCtx = { prey: [], armored: [] }; // pools to chase, pools that repel
 function setHunterColors(hexes) { hunterMats.forEach((mat, i) => { const h = hexes[i % hexes.length]; mat.color.setHex(h); mat.emissive.setHex(h); }); }
+function setHunterShape(kind) { for (const it of hunters.items) it.mesh.geometry = kind === 'antibody' ? yGeo : pillGeo; }
 function pickPrey(it) {
   const list = [];
   for (const p of huntCtx.prey) for (const x of p.items) if (x.active) list.push(x);
@@ -795,28 +869,41 @@ function pickPrey(it) {
   it.target = list.length ? list[Math.floor(Math.random() * list.length)] : null;
   it.armored = !!it.target && huntCtx.armored.some(p => p.items.includes(it.target));
 }
-const hunters = new Pool(50, i => new THREE.Mesh(hunterGeo, hunterMats[i % 2]),
+const aim = new THREE.Vector3();
+const hunters = new Pool(50, i => new THREE.Mesh(yGeo, hunterMats[i % 2]),
   it => { it.mesh.position.copy(curve.getPointAt(.45)).add(randIn(2)); it.vel = new THREE.Vector3(); it.cool = 0; it.stuck = randIn(1).normalize(); pickPrey(it); },
   (it, dt, days, t) => {
-    it.mesh.rotation.x += dt * 3; it.mesh.rotation.y += dt * 2;
     it.cool -= dt;
-    if (it.cool > 0) { it.mesh.position.addScaledVector(it.vel, dt); it.vel.multiplyScalar(.92); return; }
+    if (it.cool > 0) { it.mesh.position.addScaledVector(it.vel, dt); it.vel.multiplyScalar(.92); it.mesh.rotation.z += dt * 12; return; }
     if (!it.target || !it.target.active) { pickPrey(it); if (!it.target) {
       // nothing to hit: drift aimlessly around the site
       it.mesh.position.lerp(SITE.clone().add(new THREE.Vector3(Math.sin(t * .7 + it.i) * 7, Math.cos(t * .5 + it.i * 2) * 5, Math.cos(t * .6 + it.i) * 7)), dt * .8);
+      it.mesh.rotation.x += dt; it.mesh.rotation.y += dt * 1.3;
       return;
     } }
-    const goal = it.target.mesh.position.clone().addScaledVector(it.stuck, it.armored ? 1.7 : .9);
+    const goal = it.target.mesh.position.clone().addScaledVector(it.stuck, it.armored ? 1.7 : 1.05);
     it.mesh.position.lerp(goal, Math.min(1, dt * (it.armored ? 3 : 4)));
-    if (it.armored && it.mesh.position.distanceTo(goal) < .5) {
-      // bounced off the shield
-      it.vel.copy(it.stuck).multiplyScalar(9); it.cool = .6; it.target = null;
-    }
+    // point the business end (the Y's arms) at the target
+    aim.subVectors(it.target.mesh.position, it.mesh.position);
+    if (aim.lengthSq() > 1e-4) it.mesh.quaternion.setFromUnitVectors(Y_UP, aim.normalize());
+    if (it.armored) {
+      if (it.mesh.position.distanceTo(goal) < .5) { it.vel.copy(it.stuck).multiplyScalar(9); it.cool = .6; it.target = null; } // bounced off the shield
+    } else if (it.mesh.position.distanceTo(goal) < .4) it.target.bound = (it.target.bound || 0) + 1;
   });
 function updateBattle(dt, days, t, count, prey, armored) {
   huntCtx.prey = prey; huntCtx.armored = armored;
+  for (const p of prey) for (const it of p.items) it.bound = 0;
   hunters.setTarget(count);
   hunters.update(dt, days, t);
+  // binding: the more hunters latched on, the greyer and stiller the microbe gets before it pops
+  for (const p of [viruses, bactS]) for (const it of p.items) {
+    if (!it.mesh.visible) continue;
+    const want = clamp((it.bound || 0) / 3, 0, 1);
+    it.coat = (it.coat || 0) + (want - (it.coat || 0)) * Math.min(1, dt * 3);
+    const mat = it.mesh.material;
+    mat.color.copy(mat.userData.base).lerp(COATED, it.coat * .7);
+    mat.emissiveIntensity = mat.userData.glow * (1 - it.coat * .8);
+  }
   updateBursts(dt);
 }
 
@@ -827,7 +914,7 @@ const drugPos = new Float32Array(DRUG_MAX * 3), drugCol = new Float32Array(DRUG_
 drugGeo.setAttribute('position', new THREE.BufferAttribute(drugPos, 3));
 drugGeo.setAttribute('color', new THREE.BufferAttribute(drugCol, 3));
 const drugData = [...Array(DRUG_MAX)].map(() => ({ u: Math.random(), off: randIn(1.3), sp: rnd(.02, .05) }));
-const drugPoints = new THREE.Points(drugGeo, new THREE.PointsMaterial({ size: .5, vertexColors: true, transparent: true, opacity: .95, depthWrite: false, blending: THREE.AdditiveBlending }));
+const drugPoints = new THREE.Points(drugGeo, new THREE.PointsMaterial({ map: pillTex, size: .85, vertexColors: true, transparent: true, alphaTest: .3, depthWrite: false, blending: THREE.AdditiveBlending }));
 drugGeo.setDrawRange(0, 0); world.add(drugPoints);
 function setDrugColors(hexes) {
   const c = new THREE.Color();
@@ -1294,6 +1381,20 @@ function resetWorld() {
   for (const b of bursts) { b.life = 0; b.m.visible = false; }
   abGeo.setDrawRange(0, 0); drugGeo.setDrawRange(0, 0); scene.background.copy(BG); syringe.userData.push = 0;
 }
+// little pictures for the 3D view's cast, matching the meshes' silhouettes and colors
+const ICONS = {
+  antibody: ['Antibody', '<path d="M8 15V8L3 2M8 8l5-6" stroke="#4fd1ff" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>'],
+  virus: ['Virus', '<g stroke="#e05cff" stroke-width="1.6" stroke-linecap="round"><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4"/></g><circle cx="8" cy="8" r="3.6" fill="#e05cff"/>'],
+  bacteria: ['Bacterium', '<rect x="1.5" y="5" width="13" height="6" rx="3" fill="#5be38f" transform="rotate(-30 8 8)"/>'],
+  resistant: ['Resistant', '<circle cx="8" cy="8" r="7" fill="#ff8c2a" opacity=".25"/><rect x="3" y="6" width="10" height="4" rx="2" fill="#ff8c2a" transform="rotate(-30 8 8)"/>'],
+  drug: ['Drug', '<rect x="2" y="5.5" width="12" height="5" rx="2.5" fill="#4fd1ff" transform="rotate(-45 8 8)"/>'],
+  bcell: ['B cell', '<circle cx="8" cy="8" r="5.5" fill="#5aa8ff"/>'],
+  tcell: ['T cell', '<circle cx="8" cy="8" r="4.5" fill="#ffa94d"/><g fill="#ffa94d"><circle cx="8" cy="2" r="1.3"/><circle cx="8" cy="14" r="1.3"/><circle cx="2" cy="8" r="1.3"/><circle cx="14" cy="8" r="1.3"/><circle cx="3.8" cy="3.8" r="1.1"/><circle cx="12.2" cy="12.2" r="1.1"/><circle cx="3.8" cy="12.2" r="1.1"/><circle cx="12.2" cy="3.8" r="1.1"/></g>'],
+  dc: ['Dendritic cell', '<path d="M8 1v14M1 8h14M3 3l10 10M13 3L3 13" stroke="#9cff6b" stroke-width="1.6" stroke-linecap="round"/><circle cx="8" cy="8" r="3" fill="#9cff6b"/>'],
+};
+function setKey(ids) {
+  $('key').innerHTML = ids.map(id => `<span><svg viewBox="0 0 16 16">${ICONS[id][1]}</svg>${ICONS[id][0]}</span>`).join('');
+}
 const VAX_LEGEND = [['#4fd1ff', 'Antibodies'], ['#ffa94d', 'T cells'], ['#ff5d6c', 'Side effects'], ['#e05cff', 'Virus']];
 const CAMS = {
   overview: { pos: new THREE.Vector3(-6, 32, 52), target: new THREE.Vector3(0, 0, 0), label: '🔍 Close-up' },
@@ -1316,7 +1417,7 @@ function setupTrialHud(sim, title, legend) {
   for (const b of $('warp').querySelectorAll('button')) b.onclick = () => { trial.warp = +b.dataset.w; for (const x of $('warp').children) x.classList.toggle('on', x === b); };
   $('skip').onclick = () => { trial.warp = 40; };
   $('cam').onclick = () => setCam(trial.view === 'closeup' ? 'overview' : 'closeup', true);
-  Object.assign(trial, { view: null, autoCam: true, paused: false, checkpointDone: false, baseSim: null, changeNote: null });
+  Object.assign(trial, { view: null, autoCam: true, paused: false, checkpointDone: false, baseSim: null, altSim: null });
   show('trial');
   setCam('overview');
 }
@@ -1334,7 +1435,7 @@ function changeVerdict(s) {
   const b = trial.baseSim; if (!b) return null;
   const what = trial.tx ? 'plan' : 'schedule';
   if (s.success && !b.success) return `Good call on day ${Math.floor(trial.changeDay)}: the original ${what} would have failed.`;
-  if (s.success && b.success) return `The original ${what} would have worked too, so the change cost you more without changing the outcome.`;
+  if (s.success && b.success) return `The original ${what} would have worked too.`;
   if (!s.success && b.success) return `The original ${what} would have worked. The change made things worse.`;
   return `The original ${what} would have failed too. A bigger change, or the right plan from day one, was needed.`;
 }
@@ -1365,9 +1466,10 @@ function startTrial() {
   const m = mission, sim = simulate(design, m);
   Object.assign(trial, { active: true, tx: false, t: 0, sim, mission: m, hist: [], lastSample: -1, done: false, design: { ...design } });
   resetWorld();
-  setHunterColors([0x4fd1ff]);
+  setHunterColors([0x4fd1ff]); setHunterShape('antibody');
   trial.events = vaxEvents(sim, m, design, -1);
   setupTrialHud(sim, 'Volunteer vitals', VAX_LEGEND);
+  setKey(['antibody', m.bug === 'bacteria' ? 'bacteria' : 'virus', 'dc', 'bcell', 'tcell']);
 }
 function vaxCheckpoint() {
   const s = trial.sim, m = trial.mission, d = trial.design;
@@ -1390,7 +1492,11 @@ function vaxCheckpoint() {
       <button class="cp-choice" id="cp-keep"><b>Keep the schedule</b><small>${d.doses} dose${d.doses > 1 ? 's' : ''} total</small></button>
       <button class="cp-choice" id="cp-boost" ${blocked ? 'disabled' : ''}><b>Add a booster dose</b><small>${blocked || `Dose ${next.doses} on day ${(next.doses - 1) * DOSE_GAP} · side effects ${pct(side)} · cost $${cost}k`}</small></button>
     </div>`);
-  $('cp-keep').onclick = () => closeCheckpoint();
+  $('cp-keep').onclick = () => {
+    // keep the booster as a what-if for the debrief comparison
+    if (!blocked) { trial.altSim = simulate(next, m); trial.altDesign = next; }
+    closeCheckpoint();
+  };
   $('cp-boost').onclick = () => {
     trial.baseSim = s; trial.changeDay = VAX_CHECKPOINT;
     trial.design = next; trial.sim = simulate(next, m);
@@ -1461,12 +1567,13 @@ function startTxTrial() {
   Object.assign(trial, { active: true, tx: true, t: 0, sim, mission: m, hist: [], lastSample: -1, done: false, flags: {},
     doseQ: sim.doses.flat().sort((a, b) => a - b), rx: { ...rx } });
   resetWorld();
-  setDrugColors(sim.drugs.map(d => d.color)); setHunterColors(sim.drugs.map(d => d.color));
+  setDrugColors(sim.drugs.map(d => d.color)); setHunterColors(sim.drugs.map(d => d.color)); setHunterShape('drug');
   const ev = [{ day: m.startDay, fn: () => log(m.startDay, `Treatment starts: ${rxText(rx)}.`) }];
   sim.drugs.forEach((d, j) => { if (!sim.works[j]) ev.push({ day: m.startDay + 1.5, fn: () => log(m.startDay + 1.5, `${d.name} doesn't seem to be doing anything...`, 'warn') }); });
   if (m.adherence < 1) ev.push({ day: m.startDay + 2, fn: () => log(m.startDay + 2, 'Pill count is low: the patient has been skipping doses.', 'warn') });
   trial.events = ev.sort((a, b) => a.day - b.day);
   setupTrialHud(sim, 'Patient vitals', [[m.kind === 'virus' ? '#e05cff' : '#5be38f', `Susceptible ${m.kind === 'virus' ? 'virus' : 'bacteria'}`], ['#ff8c2a', 'Resistant'], ['#4fd1ff', 'Drug level'], ['#ff5d6c', 'Hospital line']]);
+  setKey(['drug', m.kind === 'virus' ? 'virus' : 'bacteria', 'resistant', 'bcell', 'tcell']);
 }
 function txEvents(h) {
   const s = trial.sim, m = trial.mission, f = trial.flags, T = trial.t;
@@ -1608,6 +1715,61 @@ function closeCheckpoint() {
 }
 
 // ---------- results ----------
+const signed = (v, fmt) => (v > 0 ? '+' : v < 0 ? '−' : '±') + fmt(Math.abs(v));
+const money = v => Math.round(v) ? `$${Math.round(v)}k` : '$0';
+function txOutcome(sim, m) {
+  if (sim.hosp !== null) return { text: `Hospitalized day ${dayOf(sim.hosp)}`, ok: false };
+  if (sim.final < m.cureBelow) return { text: `${m.cureBelow > 1 ? 'Undetectable' : 'Cleared'} day ${dayOf(sim.cleared)}`, ok: true };
+  return { text: sim.drugs.length ? 'Came back' : 'Still sick', ok: false };
+}
+// Side-by-side: no treatment / original plan / your plan (treatments), or schedule vs booster (vaccines).
+function compareHtml(s, m) {
+  let cols, rows, summary = '';
+  if (m.kind) {
+    cols = [];
+    if (s.untreated) cols.push({ name: 'No treatment', sim: s.untreated });
+    if (trial.baseSim) cols.push({ name: 'Original plan', sim: trial.baseSim });
+    cols.push({ name: trial.baseSim ? 'Your change' : 'Your plan', sim: s, you: true });
+    if (cols.length < 2) return '';
+    rows = [
+      ['Outcome', c => { const o = txOutcome(c.sim, m); return `<span class="${o.ok ? 'ok' : 'no'}">${o.text}</span>`; }],
+      ['Resistance', c => c.sim.drugs.length ? (c.sim.resisted ? '<span class="no">Spread</span>' : 'None') : '–'],
+      ['Side effects', c => pct(c.sim.side)],
+      ['Cost', c => money(c.sim.cost)],
+    ];
+    if (trial.baseSim) {
+      const b = trial.baseSim, parts = [];
+      const bo = txOutcome(b, m), so = txOutcome(s, m);
+      if (!bo.ok && so.ok) parts.push(b.hosp !== null ? 'kept the patient out of the hospital' : 'turned a relapse into a cure');
+      else if (bo.ok && !so.ok) parts.push('turned a cure into a failure');
+      else if (bo.ok && so.ok) { const d = dayOf(b.cleared) - dayOf(s.cleared); parts.push(d > 0 ? `cleared it ${d} day${d > 1 ? 's' : ''} sooner` : d < 0 ? `cleared it ${-d} day${d < -1 ? 's' : ''} later` : 'cleared it on the same day'); }
+      else parts.push('still fell short');
+      if (Math.abs(s.side - b.side) >= .01) parts.push(`${signed(s.side - b.side, pct)} side effects`);
+      if (Math.abs(s.cost - b.cost) >= .5) parts.push(`${signed(s.cost - b.cost, money)} cost`);
+      summary = `Your change ${parts[0]}${parts.length > 1 ? ` (${parts.slice(1).join(', ')})` : ''}.`;
+    }
+  } else {
+    if (s.halted) return '';
+    if (trial.baseSim) cols = [{ name: 'Original schedule', sim: trial.baseSim }, { name: 'With your booster', sim: s, you: true }];
+    else if (trial.altSim) cols = [{ name: 'Your schedule', sim: s, you: true }, { name: 'What if: +1 booster', sim: trial.altSim }];
+    else return '';
+    rows = [
+      ['Protection', c => `<span class="${c.sim.protection >= m.minProtect ? 'ok' : 'no'}">${pct(c.sim.protection)}</span>`],
+      ['Goal', c => c.sim.success ? '<span class="ok">Met</span>' : '<span class="no">Missed</span>'],
+      ['Side effects', c => pct(c.sim.side)],
+      ['Cost', c => money(c.sim.cost)],
+    ];
+    const [a, b] = cols.map(c => c.sim);
+    const dp = b.protection - a.protection, ds = b.side - a.side, dc = b.cost - a.cost;
+    summary = trial.baseSim
+      ? `The booster bought ${signed(dp, pct)} protection for ${signed(dc, money)} and ${signed(ds, pct)} side effects.`
+      : `Skipping the booster saved ${money(dc)}${ds > .005 ? ` and ${pct(ds)} side effects` : ''}. It would have ${dp > .005 ? `added ${pct(dp)} protection` : 'barely changed protection'}${!a.success && b.success ? ' and met the goal' : ''}.`;
+  }
+  const head = `<tr><th></th>${cols.map(c => `<th class="${c.you ? 'you' : ''}">${c.name}</th>`).join('')}</tr>`;
+  const body = rows.map(([label, f]) => `<tr><td>${label}</td>${cols.map(c => `<td class="${c.you ? 'you' : ''}">${f(c)}</td>`).join('')}</tr>`).join('');
+  return `<h3 class="sub">${m.kind ? 'Compared with' : 'Your checkpoint decision'}</h3>
+    <table class="cmp">${head}${body}</table>${summary ? `<p class="cmp-sum">${[changeVerdict(s), summary].filter(Boolean).join(' ')}</p>` : ''}`;
+}
 function breakdownHtml(s) {
   const weakest = s.breakdown.slice().sort((a, b) => a.value - b.value)[0];
   const rows = s.breakdown.map(b => {
@@ -1631,16 +1793,14 @@ function showResult() {
   let notes = m.sandbox ? s.notes.filter(n => !n.startsWith('★')) : s.notes.slice();
   // for vaccines the breakdown explains the causes, so keep only the headline and bonus goals
   if (!tx && !s.halted) notes = notes.filter((n, i) => i === notes.length - 1 && !s.success || n.startsWith('★') || s.success && i === 0);
-  const verdict = changeVerdict(s);
-  if (verdict) notes.push(verdict);
-  const title = s.success ? (tx ? 'Patient cured!' : 'Trial successful!')
+  const title = s.effect === 'none' ? 'Recovered on their own' : s.success ? (tx ? 'Patient cured!' : 'Trial successful!')
     : s.halted ? (tx ? 'Patient hospitalized' : 'Trial halted') : (tx ? 'Treatment failed' : 'Trial failed');
   const outcome = tx
     ? `<div><small>Infection</small><b class="${s.final < m.cureBelow ? 'ok' : 'no'}">${s.halted ? 'Critical' : s.final < m.cureBelow ? (m.cureBelow > 1 ? 'Undetectable' : 'Cleared') : 'Came back'}</b> <em>${s.resisted ? 'resistance spread' : 'no resistance'}</em></div>`
     : `<div><small>Protected</small><b class="${s.protection >= m.minProtect ? 'ok' : 'no'}">${s.halted ? '–' : pct(s.protection)}</b> <em>need ${pct(m.minProtect)}</em></div>`;
   $('result-body').innerHTML = `
     <div class="stars">${s.success && !m.sandbox ? '★'.repeat(s.stars) + '☆'.repeat(3 - s.stars) : ''}</div>
-    <h2 class="${s.success ? 'ok' : 'no'}">${title}</h2>
+    <h2 class="${s.effect === 'none' ? '' : s.success ? 'ok' : 'no'}" style="${s.effect === 'none' ? 'color:var(--warn)' : ''}">${title}</h2>
     <div style="color:var(--muted)">${m.name} · vs ${m.pathogen}</div>
     <div class="stats">
       ${outcome}
@@ -1649,6 +1809,7 @@ function showResult() {
     </div>
     <h3 class="sub">Debrief</h3>
     <ul class="notes">${notes.map(n => `<li>${n}</li>`).join('')}</ul>
+    ${compareHtml(s, m)}
     ${!tx && !s.halted ? breakdownHtml(s) : ''}
     ${m.sandbox ? '' : `<p style="color:var(--sci);margin:0 0 16px">+${earned} ⚗ science${s.success ? '' : ' (failures are data too)'}</p>`}
     <div class="btns"><button class="ghost" id="r-lab">↺ Back to the lab</button><button class="primary" id="r-menu">${m.sandbox ? '🧪 Edit pathogen' : 'Mission Control'}</button></div>`;

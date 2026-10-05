@@ -82,4 +82,19 @@ for (const [id, rx0, fix0, want, lesson] of CHANGES) {
   const ok = same && changed.success === want; if (!ok) broken++;
   console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${id} ${lesson}${same ? '' : ' (keep-plan drifted)'}`);
 }
+// Credit: the debrief separates "the drug saved them", "the drug sped recovery" and
+// "the immune system won alone". A mild virus the body clears unaided tests the last two.
+const flu = M.TX_MISSIONS.find(x => x.id === 't2');
+const mild = { ...flu, growth: 1.6, critical: 6e9, days: 30 };
+const CREDIT = [
+  [flu, { a: 'polym', dose: 'std', freq: 2, dur: 5 }, 'saved', 'antiviral saves the high-risk flu patient'],
+  [mild, { a: 'polym', dose: 'std', freq: 2, dur: 5 }, 'faster', 'antiviral speeds recovery from a mild virus'],
+  [mild, { a: 'pen', dose: 'std', freq: 3, dur: 7 }, 'none', 'antibiotic gets no credit for a mild virus'],
+];
+console.log('\nCREDIT CHECKS');
+for (const [m, rx0, want, lesson] of CREDIT) {
+  const s = M.simulateTx({ b: null, ...rx0 }, m);
+  const ok = s.effect === want; if (!ok) broken++;
+  console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${lesson}${ok ? '' : ` (got ${s.effect})`}`);
+}
 process.exitCode = broken ? 1 : 0;

@@ -9,9 +9,9 @@ Built with Claude Code in one session. All of it works and was played through in
 | Vaccine campaign | 5 missions: lab with carrier/antigen/adjuvant/delivery/doses, 3D trial, debrief, science and research tree. Jacob has beaten all 5. |
 | Treatment campaign | 5 missions: antibiotics/antivirals, combo slot, dose/frequency/course length, resistant strains drawn in orange. |
 | Sandbox | Custom pathogen builder, then either lab with everything unlocked and no budget. |
-| Battle view | Camera zooms in on the infection at exposure or treatment start (🔍/🌐 toggle). Antibodies or drug molecules hunt microbes, kills flash, and resistant microbes wear orange shields that drugs bounce off. |
+| Battle view | Camera zooms in on the infection at exposure or treatment start (🔍/🌐 toggle). Every actor has its own shape (Y-shaped antibodies, capsule drugs, knobbed viruses, bumpy T cells, branching dendritic cells), with a key under the chart. Antibodies latch on and coated viruses grey out and stop tumbling before they pop. Resistant microbes wear orange shields that drugs bounce off. |
 | Mid-trial checkpoint | Vaccines: day-10 bloodwork with an option to add a booster. Treatments: lab results (load trend, % resistant per drug) with a plan editor. The debrief says whether the change helped compared with the original plan. |
-| Vaccine debrief | "What drove your result" bars per part, weakest link highlighted, plus one clue. |
+| Debriefs | Vaccines: "What drove your result" bars per part, weakest link highlighted, plus one clue. Treatments: credit compared with the untreated patient (saved them / sped recovery / recovered on their own). Both show a comparison table: no treatment, original plan and your change, or your schedule vs. the skipped booster. |
 | No-WebGL fallback | Shows a notice and the game still runs. |
 | Mobile layout | Works at phone width (panels stack). |
 | GitHub | Public repo https://github.com/soulfulnevada/immunaut-program, branch `main`. |
