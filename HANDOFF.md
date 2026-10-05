@@ -34,6 +34,10 @@ Jacob's other site (Golden Crumb Bakery) deploys from GitHub to Netlify automati
 
 After that, every push to `main` redeploys.
 
+## Next up: Outbreak campaign (design stage)
+
+A 4th tab with three linked chapters (investigate → respond → adapt) where choices carry forward. The draft design is in [`docs/outbreak-campaign.md`](docs/outbreak-campaign.md). Nothing is built yet: agree the sketch and its open questions with Jacob before writing code.
+
 ## Idea backlog
 
 These were offered to Jacob but not picked yet. Confirm with him before starting one.
