@@ -6,6 +6,7 @@ Built with Claude Code in one session. All of it works and was played through in
 
 | Feature | State |
 |---|---|
+| Menu tabs | 🌊 Outbreak (default) · 📘 Tutorial (the vaccine and treatment missions, as two sections) · 🧪 Sandbox. |
 | Vaccine campaign | 5 missions: lab with carrier/antigen/adjuvant/delivery/doses, 3D trial, debrief, science and research tree. Jacob has beaten all 5. |
 | Treatment campaign | 5 missions: antibiotics/antivirals, combo slot, dose/frequency/course length, resistant strains drawn in orange. |
 | Sandbox | Custom pathogen builder, then either lab with everything unlocked and no budget. |

@@ -46,6 +46,8 @@
   #mission-list { display: grid; gap: 10px; }
   .tabs { display: flex; gap: 6px; margin-bottom: 12px; }
   .tabs button { flex: 1; padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: transparent; color: var(--muted); font: 700 15px "Exo 2", sans-serif; }
+  .tut-head { margin: 6px 0 0; }
+  .tut-head:first-child { margin-top: 0; }
   .tabs button.on { color: #04111c; background: var(--accent); border-color: var(--accent); }
   .mission { display: grid; grid-template-columns: 1fr auto; gap: 4px 16px; text-align: left; padding: 14px 16px; border-radius: 12px; border: 1px solid var(--line); background: #ffffff06; }
   .mission:hover:not(:disabled) { border-color: var(--accent); background: #4fd1ff10; }
@@ -295,7 +297,7 @@
   <div class="panel">
     <h1>Mission Control</h1>
     <p class="lead" id="lead"></p>
-    <div class="tabs" id="tabs"><button data-c="vax">💉 Vaccines</button><button data-c="tx">💊 Treatments</button><button data-c="sandbox">🧪 Sandbox</button><button data-c="outbreak">🌊 Outbreak</button></div>
+    <div class="tabs" id="tabs"><button data-c="outbreak">🌊 Outbreak</button><button data-c="tutorial">📘 Tutorial</button><button data-c="sandbox">🧪 Sandbox</button></div>
     <div id="mission-list"></div>
     <label class="fine opt"><input type="checkbox" id="opt-predict"> Ask me to predict the outcome before each new design</label>
     <p class="fine">This is a game, not medical advice. The immunology is heavily simplified, and every pathogen is made up.</p>
@@ -1417,11 +1419,12 @@ let mode = 'menu';
 let mission = null;
 let design = { carrier: 'subunit', antigen: 'spike', adjuvant: 'none', route: 'im', doses: 1 };
 let rx = { a: 'pen', b: null, dose: 'std', freq: 1, dur: 7 };
-let campaign = 'vax';
+let campaign = 'outbreak';
 const LEAD = {
   vax: 'Design a vaccine from parts, run a trial and watch the immune system respond. When a trial fails, the debrief tells you why.',
   tx: 'The patient is already sick. Pick the drugs, dose and schedule, then watch the microbes fight back. Every survivor is a chance for resistance.',
   outbreak: 'One outbreak, three linked chapters. Investigate it, respond to it, then live with the consequences when it comes back.',
+  tutorial: 'Learn the tools one idea at a time: five vaccine missions, then five treatment missions. Each one teaches a single lesson.',
   sandbox: 'Build your own pathogen, then beat it with a vaccine or a treatment. Every part is unlocked, there is no budget, and nothing here affects your campaign.',
 };
 const trial = { active: false, t: 0, warp: 1, sim: null, mission: null, events: [], hist: [], lastSample: -1, done: false };
@@ -1437,7 +1440,6 @@ function show(screen) {
 }
 
 // ---------- menu ----------
-const campaignList = () => campaign === 'vax' ? MISSIONS : TX_MISSIONS;
 function missionUnlocked(list, i) { return i === 0 || !!save.missions[list[i - 1].id]?.done; }
 function renderMenu() {
   $('mission-tag').textContent = '';
@@ -1447,8 +1449,8 @@ function renderMenu() {
   for (const b of $('tabs').children) { b.classList.toggle('on', b.dataset.c === campaign); b.onclick = () => { campaign = b.dataset.c; renderMenu(); }; }
   if (campaign === 'sandbox') { renderSandbox(); return; }
   if (campaign === 'outbreak') { renderOutbreak(); return; }
-  const list = campaignList();
-  $('mission-list').innerHTML = list.map((m, i) => {
+  // the tutorial: both mission lists, vaccines first
+  const card = (list, key) => (m, i) => {
     const rec = save.missions[m.id], open = missionUnlocked(list, i);
     const hot = t => `<span class="tag hot">${t}</span>`;
     const tags = (m.kind ? [
@@ -1463,11 +1465,14 @@ function renderMenu() {
     const got = rec?.done ? 1 + (rec.ch || []).length : 0, max = 1 + (m.challenges || []).length;
     const stars = got ? '★'.repeat(got) + '☆'.repeat(max - got) : open ? `+${m.reward} ⚗` : '🔒';
     const chips = rec?.done ? (m.challenges || []).map(c => `<span class="tag ${(rec.ch || []).includes(c.kind) ? 'chal-done' : ''}">${(rec.ch || []).includes(c.kind) ? '🏅' : '○'} ${CHALLENGE_TEXT[c.kind](c)}</span>`).join('') : '';
-    return `<button class="mission" data-i="${i}" ${open ? '' : 'disabled'}>
+    return `<button class="mission" data-l="${key}" data-i="${i}" ${open ? '' : 'disabled'}>
       <span class="name">${i + 1}. ${m.name} <small style="color:var(--muted);font-weight:500">vs ${m.pathogen}</small></span>
       <span class="stars">${stars}</span><span class="blurb">${m.blurb}</span><span class="tags">${tags}${chips}</span></button>`;
-  }).join('');
-  for (const b of document.querySelectorAll('.mission')) b.onclick = () => openLab(list[+b.dataset.i]);
+  };
+  const lists = { vax: MISSIONS, tx: TX_MISSIONS };
+  $('mission-list').innerHTML = [['vax', '💉 Vaccines'], ['tx', '💊 Treatments']]
+    .map(([key, title]) => `<h3 class="sub tut-head">${title}</h3>${lists[key].map(card(lists[key], key)).join('')}`).join('');
+  for (const b of document.querySelectorAll('.mission')) b.onclick = () => openLab(lists[b.dataset.l][+b.dataset.i]);
 }
 function goMenu() {
   if (inspected) closeInspect();
