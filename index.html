@@ -118,6 +118,14 @@
   #chart { width: 100%; height: 120px; display: block; }
   .legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11px; color: var(--muted); margin-top: 6px; }
   .legend i { display: inline-block; width: 10px; height: 3px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+  #inspect { position: absolute; left: 50%; transform: translateX(-50%); bottom: 16px; width: min(420px, calc(100% - 32px)); padding: 12px 14px; font-size: 13px; color: #c9d5ea; z-index: 3; }
+  #inspect p { margin: 6px 0 0; }
+  .ins-head { display: flex; align-items: center; gap: 8px; }
+  .ins-head svg { width: 22px; height: 22px; }
+  .ins-head b { flex: 1; font: 700 17px "Exo 2", sans-serif; color: var(--text); }
+  .ins-head .ghost { padding: 5px 10px; font-size: 12px; }
+  .ins-now span { display: block; color: var(--accent); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; }
+  .key-tip { color: var(--accent); }
   .key { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 8px; padding-top: 8px; border-top: 1px solid #ffffff10; font-size: 11px; color: var(--muted); }
   .key span { display: inline-flex; align-items: center; gap: 4px; }
   .key svg { width: 16px; height: 16px; }
@@ -156,6 +164,16 @@
   .cmp td:first-child { color: var(--muted); }
   .cmp .you { background: #4fd1ff10; }
   .cmp th.you { color: var(--accent); }
+  .cmp td.diff { color: var(--accent); font-weight: 600; background: #4fd1ff12; }
+  .cmp td.cmp-gap { padding: 2px; border: 0; }
+  #compare .card2 { width: min(640px, 100%); }
+  .att { border-top: 1px solid var(--line); padding-top: 10px; display: grid; gap: 6px; }
+  .att h3.sub { margin: 0 0 2px; }
+  .att-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; padding: 6px 8px; border-radius: 8px; background: #ffffff06; }
+  .att-row b { font-size: 13px; }
+  .att-row small { display: block; color: var(--muted); font-size: 11px; line-height: 1.35; }
+  .att-row .ghost { padding: 5px 10px; font-size: 12px; }
+  .att-stars { color: var(--warn); font-size: 12px; }
   .cmp-sum { margin: 0 0 14px; font-size: 13px; color: #d6e6fb; }
   .cp-kicker { color: var(--accent); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .1em; }
   .cp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin: 14px 0 10px; }
@@ -163,6 +181,9 @@
   .cp-grid small { display: block; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
   .cp-grid b { font: 700 18px "Exo 2", sans-serif; }
   .cp-grid em { display: block; font-style: normal; color: var(--muted); font-size: 12px; }
+  .cp-twist { background: #ffb34714; border: 1px solid #ffb34766; border-radius: 10px; padding: 9px 12px; margin-bottom: 10px; font-size: 13px; color: #ffe2b8; }
+  .cp-twist b { display: block; color: var(--warn); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+  .warn { color: var(--warn); }
   .cp-note { color: #c9d5ea; font-size: 13px; margin: 0 0 12px; }
   .cp-choices { display: grid; gap: 8px; }
   .cp-choice { text-align: left; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line); background: #ffffff06; }
@@ -234,6 +255,7 @@
     <button class="ghost" id="cam">🔍 Close-up</button>
   </div>
   <div class="panel" id="log"><h3>Trial log</h3><div id="log-items"></div></div>
+  <div class="panel hidden" id="inspect"></div>
   <div class="panel" id="vitals">
     <div class="temp"><h3 id="vitals-title">Volunteer vitals</h3><b id="temp">37.0°C</b></div>
     <canvas id="chart" width="600" height="220"></canvas>
@@ -243,6 +265,7 @@
 </section>
 
 <div id="result" class="modal hidden"><div class="card2" id="result-body"></div></div>
+<div id="compare" class="modal hidden"><div class="card2" id="compare-body"></div></div>
 <div id="checkpoint" class="modal hidden cp"><div class="card2" id="cp-body"></div></div>
 <div id="no3d" class="hidden">3D view unavailable: this browser has WebGL graphics turned off. The game still plays, but turn on hardware acceleration to watch the battle.</div>
 
@@ -279,10 +302,14 @@ const PARTS = {
 
 const MISSIONS = [
   { id: 'm1', name: 'First Shot', pathogen: 'Rhino-7', blurb: 'A mild cold virus is tearing through a college dorm. Protect at least half of the volunteers.', drift: 0, cold: true, frailty: 1, maxSide: .6, minProtect: .5, challengeDay: 45, resp: true, budget: 60, reward: 30 },
-  { id: 'm2', name: 'Flu Season', pathogen: 'Influx-B', blurb: 'Influx-B mutated over the summer, so last year\'s spike protein is a poor match now.', drift: .6, cold: true, frailty: 1, maxSide: .55, minProtect: .65, challengeDay: 60, resp: true, budget: 70, reward: 35 },
-  { id: 'm3', name: 'Off the Grid', pathogen: 'Marsh Fever', blurb: 'An outbreak in a remote region with no refrigeration. Fragile vaccines will spoil in transit.', drift: .15, cold: false, frailty: 1, maxSide: .6, minProtect: .65, challengeDay: 50, resp: false, budget: 55, reward: 40 },
-  { id: 'm4', name: 'Care Home', pathogen: 'Influx-C', blurb: 'Elderly residents need protection that lasts all winter, without harsh side effects.', drift: .2, cold: true, frailty: 1.25, maxSide: .5, minProtect: .65, challengeDay: 120, resp: true, budget: 90, reward: 45 },
-  { id: 'm5', name: 'Pathogen X', pathogen: 'Pathogen X', blurb: 'A brand-new virus with a fast-mutating spike. The whole world is watching.', drift: .45, cold: true, frailty: 1.1, maxSide: .55, minProtect: .85, challengeDay: 75, resp: true, budget: 110, reward: 60 },
+  { id: 'm2', name: 'Flu Season', pathogen: 'Influx-B', blurb: 'Influx-B mutated over the summer, so last year\'s spike protein is a poor match now.', drift: .6, cold: true, frailty: 1, maxSide: .55, minProtect: .65, challengeDay: 60, resp: true, budget: 70, reward: 35,
+    twist: { text: 'Lab alert: a new sub-variant is spreading. A booster given now would be a poorer match for it.', boostEff: .7 } },
+  { id: 'm3', name: 'Off the Grid', pathogen: 'Marsh Fever', blurb: 'An outbreak in a remote region with no refrigeration. Fragile vaccines will spoil in transit.', drift: .15, cold: false, frailty: 1, maxSide: .6, minProtect: .65, challengeDay: 50, resp: false, budget: 55, reward: 40,
+    twist: { text: 'The booster shipment is stuck at the border. Express freight would add 50% to its price.', costMul: 1.5 } },
+  { id: 'm4', name: 'Care Home', pathogen: 'Influx-C', blurb: 'Elderly residents need protection that lasts all winter, without harsh side effects.', drift: .2, cold: true, frailty: 1.25, maxSide: .5, minProtect: .65, challengeDay: 120, resp: true, budget: 90, reward: 45,
+    twist: { text: 'Two residents reacted strongly to the first dose. Older bodies often react harder to repeat doses.', sideMul: 1.4 } },
+  { id: 'm5', name: 'Pathogen X', pathogen: 'Pathogen X', blurb: 'A brand-new virus with a fast-mutating spike. The whole world is watching.', drift: .45, cold: true, frailty: 1.1, maxSide: .55, minProtect: .85, challengeDay: 75, resp: true, budget: 110, reward: 60,
+    twist: { text: 'Pathogen X mutated again this week, and booster stock is running short.', boostEff: .8, costMul: 1.3 } },
 ];
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -305,7 +332,9 @@ function reactoOf(d) {
   return Math.max(0, c.reacto * .6 + j.reacto + r.reacto + .08 * (d.doses - 1));
 }
 
-function simulate(d, m) {
+// `late` marks the last dose as a booster added at the checkpoint, with the mission's twist:
+// { boostEff, sideMul, costMul } scale that one dose's antibody boost, reactions and price.
+function simulate(d, m, late = null) {
   const c = part('carrier', d.carrier), a = part('antigen', d.antigen), j = part('adjuvant', d.adjuvant), r = part('route', d.route);
   const spoil = m.cold ? 0 : (1 - c.stab) * .9;
   const delivered = c.delivery * r.delivery * (1 - spoil);
@@ -316,10 +345,12 @@ function simulate(d, m) {
   const memory = Math.min(.95, c.memory + .12 * (d.doses - 1) + j.mem);
   const doseDays = [...Array(d.doses)].map((_, k) => k * DOSE_GAP);
   const boost = k => 1 + .5 * k;
-  const ab = t => Math.max(0, ...doseDays.map((t0, k) => abBase * boost(k) * rise(t - t0, 14, memory * .6, 30)));
-  const tc = t => Math.max(0, ...doseDays.map((t0, k) => tBase * boost(k) * rise(t - t0, 10, memory * .7, 35)));
+  const lastK = d.doses - 1, eff = k => late && k === lastK ? (late.boostEff ?? 1) : 1;
+  const ab = t => Math.max(0, ...doseDays.map((t0, k) => abBase * boost(k) * eff(k) * rise(t - t0, 14, memory * .6, 30)));
+  const tc = t => Math.max(0, ...doseDays.map((t0, k) => tBase * boost(k) * eff(k) * rise(t - t0, 10, memory * .7, 35)));
   const antigen = t => doseDays.reduce((s, t0) => s + (t > t0 ? delivered * Math.exp(-(t - t0) / 3) : 0), 0);
-  const side = reactoOf(d) * m.frailty;
+  const prev = { ...d, doses: d.doses - 1 };
+  const side = late ? (reactoOf(prev) + .08 * (late.sideMul ?? 1)) * m.frailty : reactoOf(d) * m.frailty;
   const fever = t => doseDays.reduce((s, t0) => Math.max(s, side * pulse(t - t0, 1)), 0);
   const ch = m.challengeDay;
   const abC = ab(ch), tC = tc(ch);
@@ -327,13 +358,17 @@ function simulate(d, m) {
   const protection = clamp(1 - Math.exp(-2.5 * (abC + .5 * tC)) + mucosal, 0, .99);
   const virusPeak = .12 + .88 * (1 - protection);
   const virus = t => virusPeak * pulse(t - ch, 2 + 4 * (1 - protection));
-  const cost = designCost(d);
+  const cost = late ? designCost(prev) + (designCost(d) - designCost(prev)) * (late.costMul ?? 1) : designCost(d);
   const halted = side > m.maxSide;
+  const haltDay = late ? doseDays[lastK] + 1.5 : 2.5; // a late booster can only halt the trial once it's given
   const success = !halted && protection >= m.minProtect;
   const peakAb = abBase * boost(d.doses - 1);
 
   const notes = [];
-  if (halted) {
+  if (halted && late) {
+    notes.push(`The extra booster pushed reactions to ${pct(side)}, past the ${pct(m.maxSide)} limit. The safety board halted the trial on day ${Math.floor(haltDay)}.`);
+    notes.push(`The day-10 bloodwork showed reactions already at ${pct(reactoOf(prev) * m.frailty)}, close to the limit.`);
+  } else if (halted) {
     notes.push(`The safety board halted the trial after the first dose: reaction score ${pct(side)}, limit ${pct(m.maxSide)}.`);
     if (m.frailty > 1) notes.push('This group is frail, so side effects hit harder than usual.');
     notes.push('Try a gentler carrier or adjuvant, or fewer doses.');
@@ -380,7 +415,7 @@ function simulate(d, m) {
     clue = 'This pathogen enters through the airways. A nasal spray builds defenses right where it lands (+15% protection).';
 
   return { spoil, delivered, escape, abBase, tBase, memory, doseDays, ab, tc, antigen, fever, virus, side,
-    protection, cost, halted, success, stars, notes, peakAb, breakdown, clue, mucosal, end: halted ? 2.5 : ch + 14 };
+    protection, cost, halted, haltDay, success, stars, notes, peakAb, breakdown, clue, mucosal, end: halted ? haltDay : ch + 14 };
 }
 // MODEL-END
 
@@ -399,9 +434,12 @@ const DOSE_LV = { low: { c: .5, tox: .6, name: 'Low' }, std: { c: 1, tox: 1, nam
 const TX_MISSIONS = [
   { id: 't1', name: 'Sore Throat', pathogen: 'Strepto-K', kind: 'bacteria', site: 'Throat', blurb: 'A teenager has a bacterial throat infection. Cure it without breeding resistant bacteria.', n0: 1e7, growth: 1.6, immune: .3, ramp: 0, mop: 2, mutation: 2e-9, preResist: {}, adherence: 1, startDay: 1, days: 24, cureBelow: 1, critical: 4e9, maxSide: .6, budget: 40, durations: [3, 5, 7, 10, 14], reward: 30 },
   { id: 't2', name: 'Wrong Bug?', pathogen: 'Influx-B (flu)', kind: 'virus', site: 'Lungs', blurb: 'A patient with asthma has the flu and is demanding antibiotics. Keep them out of the hospital.', n0: 1e3, growth: 4, immune: 5, ramp: 6, mop: 2, mutation: 1e-6, preResist: {}, adherence: 1, startDay: 1, days: 18, cureBelow: 1, critical: 5e8, maxSide: .5, budget: 50, durations: [3, 5, 7, 10], reward: 35 },
-  { id: 't3', name: 'Superbug Ward', pathogen: 'Staph-R', kind: 'bacteria', site: 'Wound', blurb: 'A wound infection picked up in the hospital. Lab tests show many of the bacteria already shrug off penicillin.', n0: 3e7, growth: 1.4, immune: .2, ramp: 0, mop: 1.8, mutation: 5e-7, preResist: { pen: .3 }, adherence: 1, startDay: 0, days: 28, cureBelow: 1, critical: 5e9, maxSide: .55, budget: 60, durations: [5, 7, 10, 14], reward: 40 },
-  { id: 't4', name: 'Retro-9', pathogen: 'Retro-9', kind: 'virus', site: 'Immune cells', blurb: 'A chronic virus that mutates like crazy. Drive it to undetectable levels and keep it there.', n0: 1e8, growth: 1.1, immune: .03, ramp: 0, mop: 0, resFold: 25, mutation: 3e-5, preResist: {}, adherence: 1, startDay: 0, days: 50, cureBelow: 50, critical: 8e9, maxSide: .6, budget: 160, durations: [14, 30, 45], reward: 50 },
-  { id: 't5', name: 'Forgetful Patient', pathogen: 'Pneumo-L', kind: 'bacteria', site: 'Lungs', blurb: 'An older patient with pneumonia who will miss about half of their doses, however you schedule them.', n0: 1e7, growth: 1.2, immune: .25, ramp: 0, mop: 1.6, mutation: 1e-7, preResist: {}, adherence: .5, startDay: 0, days: 30, cureBelow: 1, critical: 4e9, maxSide: .55, budget: 45, durations: [5, 7, 10, 14], reward: 45 },
+  { id: 't3', name: 'Superbug Ward', pathogen: 'Staph-R', kind: 'bacteria', site: 'Wound', blurb: 'A wound infection picked up in the hospital. Lab tests show many of the bacteria already shrug off penicillin.', n0: 3e7, growth: 1.4, immune: .2, ramp: 0, mop: 1.8, mutation: 5e-7, preResist: { pen: .3 }, adherence: 1, startDay: 0, days: 28, cureBelow: 1, critical: 5e9, maxSide: .55, budget: 60, durations: [5, 7, 10, 14], reward: 40,
+    twist: { text: 'Kidney tests came back borderline. Any drug added from now on will be harder on this patient.', sideMul: 1.5 } },
+  { id: 't4', name: 'Retro-9', pathogen: 'Retro-9', kind: 'virus', site: 'Immune cells', blurb: 'A chronic virus that mutates like crazy. Drive it to undetectable levels and keep it there.', n0: 1e8, growth: 1.1, immune: .03, ramp: 0, mop: 0, resFold: 25, mutation: 3e-5, preResist: {}, adherence: 1, startDay: 0, days: 50, cureBelow: 50, critical: 8e9, maxSide: .6, budget: 160, durations: [14, 30, 45], reward: 50,
+    twist: { text: 'The insurance cap was reached. Drugs added from now on cost 50% more.', costMul: 1.5 } },
+  { id: 't5', name: 'Forgetful Patient', pathogen: 'Pneumo-L', kind: 'bacteria', site: 'Lungs', blurb: 'An older patient with pneumonia who will miss about half of their doses, however you schedule them.', n0: 1e7, growth: 1.2, immune: .25, ramp: 0, mop: 1.6, mutation: 1e-7, preResist: {}, adherence: .5, startDay: 0, days: 30, cureBelow: 1, critical: 4e9, maxSide: .55, budget: 45, durations: [5, 7, 10, 14], reward: 45,
+    twist: { text: 'The patient says they will only take pills once a day from now on.', freqMax: 1 } },
 ];
 
 const DRUG = id => DRUGS.find(d => d.id === id);
@@ -455,10 +493,22 @@ function txUsage(rx, m, change) {
   }
   return Object.values(use).filter(u => u.bought > 0);
 }
+// What a mid-course change adds on its own, so a mission twist (change.costMul / sideMul) can scale it.
+function txAdded(rx, m, change) {
+  const done = change.day - m.startDay;
+  const carried = id => DRUG(id).single && rxDrugs(rx).includes(id); // an infusion already given isn't bought again
+  const pick = id => id && !carried(id) ? id : null;
+  return { ...change.rx, a: pick(change.rx.a), b: pick(change.rx.b), dur: Math.max(0, change.rx.dur - done) };
+}
 function txCost(rx, m, change) {
-  return txUsage(rx, m, change).reduce((s, u) => s + u.dr.cost * u.bought, 0);
+  const base = txUsage(rx, m, change).reduce((s, u) => s + u.dr.cost * u.bought, 0);
+  return change && change.costMul ? base + (change.costMul - 1) * txCost(txAdded(rx, m, change), m) : base;
 }
 function txSide(rx, m, change) {
+  const base = txSideBase(rx, m, change);
+  return change && change.sideMul ? base + (change.sideMul - 1) * txSideBase(txAdded(rx, m, change), m) : base;
+}
+function txSideBase(rx, m, change) {
   return txUsage(rx, m, change).reduce((s, { dr, days, tox, freq }) => {
     const len = dr.single ? 1 : Math.min(2, days / 7);
     return s + dr.tox * tox * (.6 + .4 * len) * (dr.single ? 1 : (.8 + .1 * freq)) + dr.gut * tox * (dr.single ? 0 : days / 14);
@@ -887,7 +937,7 @@ const hunters = new Pool(50, i => new THREE.Mesh(yGeo, hunterMats[i % 2]),
     aim.subVectors(it.target.mesh.position, it.mesh.position);
     if (aim.lengthSq() > 1e-4) it.mesh.quaternion.setFromUnitVectors(Y_UP, aim.normalize());
     if (it.armored) {
-      if (it.mesh.position.distanceTo(goal) < .5) { it.vel.copy(it.stuck).multiplyScalar(9); it.cool = .6; it.target = null; } // bounced off the shield
+      if (it.mesh.position.distanceTo(goal) < .5) { it.vel.copy(it.stuck).multiplyScalar(9); it.cool = .6; it.lastTarget = it.target; it.target = null; } // bounced off the shield
     } else if (it.mesh.position.distanceTo(goal) < .4) it.target.bound = (it.target.bound || 0) + 1;
   });
 function updateBattle(dt, days, t, count, prey, armored) {
@@ -1140,6 +1190,7 @@ function renderMenu() {
   for (const b of document.querySelectorAll('.mission')) b.onclick = () => openLab(list[+b.dataset.i]);
 }
 function goMenu() {
+  if (inspected) closeInspect();
   trial.active = false; resetWorld(); siteMat.opacity = .35;
   show('menu'); renderMenu();
   controls.autoRotate = true; controls.autoRotateSpeed = .4;
@@ -1303,9 +1354,11 @@ function renderTxBrief() {
       ${m.sandbox ? meter('Cost (no budget in sandbox)', `$${Math.round(cost)}k`, cost / 150, 'var(--sci)') : meter('Cost', `$${Math.round(cost)}k / $${m.budget}k`, cost / m.budget, over ? 'var(--bad)' : 'var(--sci)', null)}
     </div>
     <button id="launch" class="primary" ${over ? 'disabled' : ''}>${over ? 'Over budget' : 'Start Treatment ▶'}</button>
-    <button id="back-menu" class="ghost">← Mission Control</button>`;
+    <button id="back-menu" class="ghost">← Mission Control</button>
+    ${attemptsHtml(m)}`;
   $('launch').onclick = startTxTrial;
   $('back-menu').onclick = goMenu;
+  wireAttempts(m);
   if (!$('part-info').innerHTML) partInfo(drugs[0]);
 }
 const KIND_LABEL = { carrier: 'Carrier', antigen: 'Antigen target', adjuvant: 'Adjuvant', route: 'Delivery' };
@@ -1369,9 +1422,11 @@ function renderBrief() {
       ${m.sandbox ? meter('Cost (no budget in sandbox)', `$${cost}k`, cost / 150, 'var(--sci)') : meter('Cost', `$${cost}k / $${m.budget}k`, cost / m.budget, over ? 'var(--bad)' : 'var(--sci)', null)}
     </div>
     <button id="launch" class="primary" ${over ? 'disabled' : ''}>${over ? 'Over budget' : 'Begin Trial ▶'}</button>
-    <button id="back-menu" class="ghost">← Mission Control</button>`;
+    <button id="back-menu" class="ghost">← Mission Control</button>
+    ${attemptsHtml(m)}`;
   $('launch').onclick = startTrial;
   $('back-menu').onclick = goMenu;
+  wireAttempts(m);
   if (!$('part-info').innerHTML) partInfo(c);
 }
 
@@ -1393,7 +1448,8 @@ const ICONS = {
   dc: ['Dendritic cell', '<path d="M8 1v14M1 8h14M3 3l10 10M13 3L3 13" stroke="#9cff6b" stroke-width="1.6" stroke-linecap="round"/><circle cx="8" cy="8" r="3" fill="#9cff6b"/>'],
 };
 function setKey(ids) {
-  $('key').innerHTML = ids.map(id => `<span><svg viewBox="0 0 16 16">${ICONS[id][1]}</svg>${ICONS[id][0]}</span>`).join('');
+  $('key').innerHTML = ids.map(id => `<span><svg viewBox="0 0 16 16">${ICONS[id][1]}</svg>${ICONS[id][0]}</span>`).join('')
+    + '<span class="key-tip">Click anything in 3D to inspect it</span>';
 }
 const VAX_LEGEND = [['#4fd1ff', 'Antibodies'], ['#ffa94d', 'T cells'], ['#ff5d6c', 'Side effects'], ['#e05cff', 'Virus']];
 const CAMS = {
@@ -1417,7 +1473,8 @@ function setupTrialHud(sim, title, legend) {
   for (const b of $('warp').querySelectorAll('button')) b.onclick = () => { trial.warp = +b.dataset.w; for (const x of $('warp').children) x.classList.toggle('on', x === b); };
   $('skip').onclick = () => { trial.warp = 40; };
   $('cam').onclick = () => setCam(trial.view === 'closeup' ? 'overview' : 'closeup', true);
-  Object.assign(trial, { view: null, autoCam: true, paused: false, checkpointDone: false, baseSim: null, altSim: null });
+  if (inspected) closeInspect();
+  Object.assign(trial, { view: null, autoCam: true, paused: false, inspectPaused: false, checkpointDone: false, baseSim: null, altSim: null, changeRx: null });
   show('trial');
   setCam('overview');
 }
@@ -1446,13 +1503,18 @@ function vaxEvents(sim, m, d, after) {
   const c = part('carrier', d.carrier), ev = [];
   sim.doseDays.forEach((day, k) => ev.push({ day: day + .01, fn: () => { injectBurst(sim, c); log(day, k === 0 ? `First dose given to 1,000 volunteers via ${d.route === 'nasal' ? 'nasal spray' : 'injection'}.` : `Booster dose ${k + 1} given.`); } }));
   if (sim.spoil > .2) ev.push({ day: .3, fn: () => log(.3, `${pct(sim.spoil)} of the doses spoiled in transit without refrigeration.`, 'warn') });
+  const lateHalt = sim.halted && sim.haltDay > 3;
   ev.push({ day: 1, fn: () => {
-    if (sim.halted) log(1, 'Severe reactions reported: high fevers across the trial group.', 'bad');
+    if (sim.halted && !lateHalt) log(1, 'Severe reactions reported: high fevers across the trial group.', 'bad');
+    else if (lateHalt) log(1, 'Sore arms and some fevers. Within limits for now.', 'warn');
     else if (sim.side > m.maxSide * .7) log(1, 'Many volunteers report fever and aches. Still within safety limits.', 'warn');
     else if (sim.side > .15) log(1, 'Sore arms and mild tiredness. Nothing alarming.');
     else log(1, 'Almost no side effects reported.', 'good');
   } });
-  if (sim.halted) ev.push({ day: 2.4, fn: () => log(2.4, 'TRIAL HALTED by the safety board.', 'bad') });
+  if (lateHalt) {
+    ev.push({ day: sim.haltDay - .8, fn: () => log(sim.haltDay - .8, 'Severe reactions after the booster: high fevers across the trial group.', 'bad') });
+    ev.push({ day: sim.haltDay - .05, fn: () => log(sim.haltDay - .05, 'TRIAL HALTED by the safety board.', 'bad') });
+  } else if (sim.halted) ev.push({ day: 2.4, fn: () => log(2.4, 'TRIAL HALTED by the safety board.', 'bad') });
   else {
     ev.push({ day: 3, fn: () => log(3, 'Dendritic cells are carrying antigen to the lymph node.') });
     ev.push({ day: 9, fn: () => log(9, sim.abBase > .3 ? 'B cells and T cells are multiplying in the lymph node.' : 'Only a faint response in the lymph node so far.', sim.abBase > .3 ? '' : 'warn') });
@@ -1464,7 +1526,7 @@ function vaxEvents(sim, m, d, after) {
 }
 function startTrial() {
   const m = mission, sim = simulate(design, m);
-  Object.assign(trial, { active: true, tx: false, t: 0, sim, mission: m, hist: [], lastSample: -1, done: false, design: { ...design } });
+  Object.assign(trial, { active: true, tx: false, t: 0, sim, mission: m, hist: [], lastSample: -1, done: false, design: { ...design }, startDesign: { ...design } });
   resetWorld();
   setHunterColors([0x4fd1ff]); setHunterShape('antibody');
   trial.events = vaxEvents(sim, m, design, -1);
@@ -1472,35 +1534,42 @@ function startTrial() {
   setKey(['antibody', m.bug === 'bacteria' ? 'bacteria' : 'virus', 'dc', 'bcell', 'tcell']);
 }
 function vaxCheckpoint() {
-  const s = trial.sim, m = trial.mission, d = trial.design;
+  const s = trial.sim, m = trial.mission, d = trial.design, tw = m.twist || {};
   const next = { ...d, doses: d.doses + 1 };
-  const side = reactoOf(next) * m.frailty, cost = designCost(next);
-  const blocked = side > m.maxSide ? `Safety limit: side effects would reach ${pct(side)} (limit ${pct(m.maxSide)}).`
-    : !m.sandbox && cost > m.budget ? `Over budget: $${cost}k of $${m.budget}k.` : '';
+  const added = (designCost(next) - designCost(d)) * (tw.costMul ?? 1), total = s.cost + added;
+  const broke = !m.sandbox && total > m.budget;
   const ab = s.ab(VAX_CHECKPOINT), tc = s.tc(VAX_CHECKPOINT);
   const level = v => v < .25 ? 'Low' : v < .5 ? 'Moderate' : 'High';
+  // the lab gives a typical range, not the answer: the player weighs it against the limit
+  const lo = Math.round(.06 * m.frailty * 100), hi = Math.round(.11 * m.frailty * 100);
+  const close = s.side > m.maxSide - hi / 100;
   openCheckpoint(`
     <div class="cp-kicker">Day ${VAX_CHECKPOINT} · bloodwork is back</div>
     <h2>Mid-trial checkpoint</h2>
     <div class="cp-grid">
       <div><small>Antibodies</small><b>${level(ab)}</b>${bar(ab / .9, 'var(--accent)')}</div>
       <div><small>T cells</small><b>${level(tc)}</b>${bar(tc / .8, '#ffa94d')}</div>
+      <div><small>Reactions so far</small><b class="${close ? 'warn' : ''}">${pct(s.side)}</b><em>safety limit ${pct(m.maxSide)}</em></div>
       <div><small>Exposure</small><b>Day ${m.challengeDay}</b><em>${m.challengeDay - VAX_CHECKPOINT} days to go</em></div>
     </div>
-    <p class="cp-note">Antibodies peak about two weeks after a dose, then fade. They have to stay strong enough until exposure on day ${m.challengeDay}.</p>
+    ${tw.text ? `<div class="cp-twist"><b>New today</b>${tw.text}</div>` : ''}
+    <p class="cp-note">Antibodies peak about two weeks after a dose, then fade, and they have to hold until day ${m.challengeDay}. A booster lifts and extends them, but each extra dose usually adds about ${lo}–${hi}% to the reaction score. If reactions pass the limit, the safety board stops the trial.</p>
     <div class="cp-choices">
-      <button class="cp-choice" id="cp-keep"><b>Keep the schedule</b><small>${d.doses} dose${d.doses > 1 ? 's' : ''} total</small></button>
-      <button class="cp-choice" id="cp-boost" ${blocked ? 'disabled' : ''}><b>Add a booster dose</b><small>${blocked || `Dose ${next.doses} on day ${(next.doses - 1) * DOSE_GAP} · side effects ${pct(side)} · cost $${cost}k`}</small></button>
+      <button class="cp-choice" id="cp-keep"><b>Keep the schedule</b><small>${d.doses} dose${d.doses > 1 ? 's' : ''} total, no added risk</small></button>
+      <button class="cp-choice" id="cp-boost" ${broke ? 'disabled' : ''}><b>Add a booster dose</b><small>${broke
+        ? `Not enough budget: +${money(added)} would bring the total to ${money(total)} of $${m.budget}k.`
+        : `Dose ${next.doses} on day ${(next.doses - 1) * DOSE_GAP} · +${money(added)} (total ${money(total)}${m.sandbox ? '' : ` of $${m.budget}k`})`}</small></button>
     </div>`);
   $('cp-keep').onclick = () => {
     // keep the booster as a what-if for the debrief comparison
-    if (!blocked) { trial.altSim = simulate(next, m); trial.altDesign = next; }
+    trial.altSim = broke ? null : simulate(next, m, tw); trial.altDesign = next;
     closeCheckpoint();
   };
   $('cp-boost').onclick = () => {
     trial.baseSim = s; trial.changeDay = VAX_CHECKPOINT;
-    trial.design = next; trial.sim = simulate(next, m);
+    trial.design = next; trial.sim = simulate(next, m, tw);
     trial.events = vaxEvents(trial.sim, m, next, trial.t);
+    $('day-end').textContent = Math.round(trial.sim.end);
     log(trial.t, `Booster added: dose ${next.doses} scheduled for day ${(next.doses - 1) * DOSE_GAP}.`, 'good');
     closeCheckpoint();
   };
@@ -1599,6 +1668,9 @@ function txCheckpoint() {
   const durs = [...new Set([...m.durations.filter(d => d > elapsed), plan.dur])].sort((a, b) => a - b);
   const opts = (list, cur) => list.map(([v, l]) => `<option value="${v}" ${String(v) === String(cur) ? 'selected' : ''}>${l}</option>`).join('');
   const drugOpts = DRUGS.filter(isUnlocked).map(d => [d.id, `${d.name} (${d.cls.toLowerCase()})`]);
+  const tw = m.twist || {}, mults = { costMul: tw.costMul, sideMul: tw.sideMul };
+  const freqs = [[1, '1×'], [2, '2×'], [3, '3×']].filter(([f]) => f <= (tw.freqMax || 3));
+  const sideSoFar = txSide({ ...plan, dur: Math.min(plan.dur, elapsed) }, m);
   openCheckpoint(`
     <div class="cp-kicker">Day ${day} · lab results are back</div>
     <h2>Mid-course checkpoint</h2>
@@ -1606,13 +1678,15 @@ function txCheckpoint() {
       <div><small>Infection load</small><b class="${ratio < 1 ? 'ok' : 'no'}">${trend}</b><em>since treatment began</em></div>
       ${tests}
       <div><small>Patient</small><b class="${sev > .6 ? 'no' : sev > .3 ? '' : 'ok'}">${sev > .6 ? 'Very sick' : sev > .3 ? 'Sick' : 'Stable'}</b></div>
+      <div><small>Side effects so far</small><b>${pct(sideSoFar)}</b><em>limit ${pct(m.maxSide)}</em></div>
     </div>
-    <p class="cp-note">Now on: ${rxText(plan)}. Keep going, or adjust the plan from today. Doses already given still count.</p>
+    ${tw.text ? `<div class="cp-twist"><b>New today</b>${tw.text}</div>` : ''}
+    <p class="cp-note">Now on: ${rxText(plan)}. Keep going, or adjust the plan from today. Doses already given still count. Side effects are a pharmacist's estimate. If they end up over the limit, the treatment counts as a failure.</p>
     <div class="cp-form">
       <label>Drug<select id="cp-a">${opts(drugOpts, plan.a)}</select></label>
       <label>Second drug<select id="cp-b">${opts([['', 'None'], ...drugOpts], plan.b || '')}</select></label>
       <label>Dose<select id="cp-dose">${opts([['low', 'Low'], ['std', 'Standard'], ['high', 'High']], plan.dose)}</select></label>
-      <label>Per day<select id="cp-freq">${opts([[1, '1×'], [2, '2×'], [3, '3×']], plan.freq)}</select></label>
+      <label>Per day<select id="cp-freq">${opts(freqs, Math.min(plan.freq, tw.freqMax || 3))}</select></label>
       <label>Course<select id="cp-dur">${opts(durs.map(d => [d, `${d} days`]), plan.dur)}</select></label>
     </div>
     <div class="cp-preview" id="cp-preview"></div>
@@ -1623,11 +1697,14 @@ function txCheckpoint() {
     return r;
   };
   const refresh = () => {
-    const r = read(), change = { day, rx: r };
+    const r = read(), change = { day, rx: r, ...mults };
     const cost = txCost(trial.rx, m, change), side = txSide(trial.rx, m, change);
     const same = JSON.stringify(r) === JSON.stringify({ ...trial.rx, b: trial.rx.b || null });
-    const over = !m.sandbox && cost > m.budget, harsh = side > m.maxSide;
-    $('cp-preview').innerHTML = `Total cost <b class="${over ? 'no' : ''}">$${Math.round(cost)}k</b>${m.sandbox ? '' : ` of $${m.budget}k`} · side effects <b class="${harsh ? 'no' : ''}">${pct(side)}</b> of ${pct(m.maxSide)} limit`;
+    const over = !m.sandbox && cost > m.budget;
+    // an estimate band around the true value; prices are exact
+    const lo = Math.floor(side * 85), hi = Math.ceil(side * 115), lim = m.maxSide * 100;
+    const risk = hi <= lim ? '' : lo > lim ? 'no' : 'warn';
+    $('cp-preview').innerHTML = `Total cost <b class="${over ? 'no' : ''}">${money(cost)}</b>${m.sandbox ? '' : ` of $${m.budget}k`} · side effects about <b class="${risk}">${lo}–${hi}%</b> (limit ${pct(m.maxSide)})${over ? ' · <span class="no">over budget</span>' : ''}`;
     $('cp-apply').disabled = same || over;
   };
   for (const id of ['cp-a', 'cp-b', 'cp-dose', 'cp-freq', 'cp-dur']) $(id).onchange = refresh;
@@ -1635,8 +1712,8 @@ function txCheckpoint() {
   $('cp-keep').onclick = () => closeCheckpoint();
   $('cp-apply').onclick = () => {
     const r = read();
-    trial.baseSim = s; trial.changeDay = day;
-    trial.sim = simulateTx(trial.rx, m, { day, rx: r });
+    trial.baseSim = s; trial.changeDay = day; trial.changeRx = { ...r };
+    trial.sim = simulateTx(trial.rx, m, { day, rx: r, ...mults });
     trial.doseQ = trial.sim.doses.flat().filter(x => x > trial.t).sort((a, b) => a - b);
     setDrugColors(rxDrugs(r).map(id => DRUG(id).color)); setHunterColors(rxDrugs(r).map(id => DRUG(id).color));
     $('day-end').textContent = Math.round(trial.sim.end);
@@ -1705,6 +1782,7 @@ function drawTxChart() {
 // ---------- checkpoint modal ----------
 function bar(frac, color) { return `<div class="bar"><i style="width:${clamp(frac, 0, 1) * 100}%;background:${color}"></i></div>`; }
 function openCheckpoint(html) {
+  if (inspected) closeInspect();
   trial.paused = true;
   $('cp-body').innerHTML = html;
   $('checkpoint').classList.remove('hidden');
@@ -1714,12 +1792,203 @@ function closeCheckpoint() {
   trial.paused = false;
 }
 
+// ---------- inspect ----------
+// Click (or tap) anything in the trial to pause and read what it is and what it's doing.
+const selRing = new THREE.Mesh(new THREE.TorusGeometry(1.6, .07, 8, 48), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .9, depthTest: false }));
+selRing.renderOrder = 10; selRing.visible = false; world.add(selRing);
+let inspected = null, inspectRefresh = 0;
+const INSPECTABLE = () => [[viruses, 'virus'], [virR, 'resistant'], [bactS, 'bacteria'], [bactR, 'resistant'], [hunters, 'hunter'], [bcells, 'bcell'], [tcells, 'tcell'], [dcs, 'dc']];
+function pickAt(x, y) {
+  let best = null, bestD = 34; // generous tap radius in pixels: the targets are small and moving
+  for (const [pool, kind] of INSPECTABLE()) for (const it of pool.items) {
+    if (!it.active || !it.mesh.visible) continue;
+    tmpV.copy(it.mesh.position).project(camera);
+    if (tmpV.z > 1) continue;
+    const d = Math.hypot((tmpV.x + 1) / 2 * innerWidth - x, (1 - tmpV.y) / 2 * innerHeight - y);
+    if (d < bestD) { bestD = d; best = { pool, it, kind }; }
+  }
+  return best;
+}
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+function describe({ it, kind, pool }) {
+  const m = trial.mission, T = trial.t, bug = m.kind || m.bug || 'virus';
+  const hits = it.bound || 0, gone = !it.active;
+  if (kind === 'virus' || kind === 'bacteria') {
+    const isVirus = kind === 'virus';
+    const by = trial.tx ? plural(hits, 'drug molecule', 'drug molecules') : plural(hits, 'antibody', 'antibodies');
+    return {
+      icon: kind, name: isVirus ? 'Virus' : 'Bacterium',
+      role: isVirus ? 'Breaks into body cells and turns them into factories that make more virus.' : 'A single-celled microbe that multiplies by splitting in two.',
+      now: gone ? 'Destroyed.' : hits ? (trial.tx ? `Hit by ${by}. It's dying.` : `Coated by ${by}, which block its surface so it can't infect anything. It's about to be destroyed.`)
+        : isVirus ? 'Looking for cells to infect.' : 'Splitting and multiplying.',
+    };
+  }
+  if (kind === 'resistant') {
+    const bounced = hunters.items.some(h => h.active && h.cool > 0 && h.lastTarget === it);
+    return {
+      icon: 'resistant', name: bug === 'virus' ? 'Resistant virus' : 'Resistant bacterium',
+      role: 'A mutant the drug no longer fits. When the drug kills everything else, survivors like this take over: that\'s how resistance spreads.',
+      now: gone ? 'Destroyed by the immune system.' : bounced ? 'Drug molecules are bouncing right off it.' : 'Multiplying, unbothered by the drug.',
+    };
+  }
+  if (kind === 'hunter') {
+    const latched = it.target && !it.armored && it.mesh.position.distanceTo(it.target.mesh.position) < 1.6;
+    if (!trial.tx) return {
+      icon: 'antibody', name: 'Antibody',
+      role: 'A Y-shaped protein made by B cells. Its two arms grab one exact shape on the invader, which is why a vaccine has to teach the right shape.',
+      now: latched ? 'Latched onto an invader.' : it.target ? 'Chasing an invader.' : 'Patrolling for invaders.',
+    };
+    const dr = DRUGS.find(d => d.color === it.mesh.material.color.getHex()) || trial.sim.drugs[0];
+    const target = bug === 'virus' ? 'viruses' : 'bacteria';
+    return {
+      icon: 'drug', name: `${dr.name} molecule`, role: dr.desc,
+      now: it.cool > 0 ? 'Just bounced off a resistant microbe\'s shield.'
+        : !trial.sim.works.some(Boolean) ? `Drifting: ${dr.cls === 'Antibiotic' ? 'antibiotics' : 'antivirals'} can't attack ${target}.`
+        : latched ? `Attacking ${bug === 'virus' ? 'a virus' : 'a bacterium'}.` : it.target ? 'Homing in on a target.' : 'Circulating in the blood.',
+    };
+  }
+  if (kind === 'bcell') return {
+    icon: 'bcell', name: 'B cell',
+    role: 'Makes antibodies. A vaccine trains B cells so they remember the invader for months.',
+    now: trial.tx ? 'Making antibodies against the infection.' : trial.sim.ab(T) > .2 ? 'Pumping out antibodies.' : 'Learning the invader\'s shape in the lymph node.',
+  };
+  if (kind === 'tcell') return {
+    icon: 'tcell', name: 'T cell',
+    role: 'Finds and destroys the body\'s own infected cells, and directs the rest of the immune response.',
+    now: it.u > .26 ? 'Patrolling the infection site.' : 'Training in the lymph node.',
+  };
+  return {
+    icon: 'dc', name: 'Dendritic cell',
+    role: 'A scout. It grabs pieces of the invader (antigen) and carries them to the lymph node to show B and T cells what to attack.',
+    now: it.u < .245 ? 'Carrying antigen to the lymph node.' : 'Showing antigen to B and T cells.',
+  };
+}
+function renderInspect() {
+  const d = describe(inspected);
+  $('inspect').innerHTML = `<div class="ins-head"><svg viewBox="0 0 16 16">${ICONS[d.icon][1]}</svg><b>${d.name}</b><button class="ghost" id="ins-close">▶ Resume</button></div>
+    <p>${d.role}</p><p class="ins-now"><span>Right now</span>${d.now}</p>`;
+  $('ins-close').onclick = () => closeInspect();
+}
+function inspect(hit) {
+  inspected = hit;
+  if (!trial.paused) { trial.paused = true; trial.inspectPaused = true; }
+  $('inspect').classList.remove('hidden');
+  renderInspect();
+}
+function closeInspect() {
+  inspected = null; selRing.visible = false;
+  $('inspect').classList.add('hidden');
+  if (trial.inspectPaused) { trial.inspectPaused = false; if ($('checkpoint').classList.contains('hidden')) trial.paused = false; }
+}
+function updateInspect(dt) {
+  if (!inspected) return;
+  const mesh = inspected.it.mesh;
+  selRing.visible = mesh.visible;
+  selRing.position.copy(mesh.position); selRing.quaternion.copy(camera.quaternion);
+  selRing.scale.setScalar(Math.max(.5, mesh.scale.x) * (1 + Math.sin(performance.now() / 200) * .06));
+  if ((inspectRefresh -= dt) <= 0) { inspectRefresh = .3; renderInspect(); }
+}
+let downAt = null;
+canvas.addEventListener('pointerdown', e => { downAt = { x: e.clientX, y: e.clientY }; });
+canvas.addEventListener('pointerup', e => {
+  if (!downAt || mode !== 'trial' || !trial.active || trial.done) return;
+  const moved = Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y); downAt = null;
+  if (moved > 6) return; // a drag rotates the camera; only a still click inspects
+  const hit = pickAt(e.clientX, e.clientY);
+  if (hit) inspect(hit); else if (inspected) closeInspect();
+});
+
+// ---------- saved attempts ----------
+// The last few runs per mission, kept in the save so a design can be compared or retried.
+const ATTEMPTS_KEPT = 5;
+const attemptsFor = m => (save.attempts && save.attempts[m.id]) || [];
+function planText(m, plan) {
+  if (m.kind) return rxText(plan);
+  const j = part('adjuvant', plan.adjuvant);
+  return [part('carrier', plan.carrier).name, part('antigen', plan.antigen).name, j.id === 'none' ? 'no adjuvant' : j.name,
+    plan.route === 'nasal' ? 'nasal spray' : '', `${plan.doses} dose${plan.doses > 1 ? 's' : ''}`].filter(Boolean).join(' · ');
+}
+const changeText = (m, ch) => m.kind ? `day ${ch.day}: ${rxText(ch.rx)}` : `booster added on day ${ch.day}`;
+function recordAttempt(m, s) {
+  save.attempts = save.attempts || {};
+  const list = save.attempts[m.id] = attemptsFor(m).slice();
+  const headline = m.kind ? (s.effect === 'none' ? 'Recovered alone' : txOutcome(s, m).text) : s.halted ? 'Halted' : `${pct(s.protection)} protected`;
+  list.unshift({
+    plan: m.kind ? { ...trial.rx } : { ...trial.startDesign },
+    change: m.kind ? (trial.changeRx ? { day: trial.changeDay, rx: { ...trial.changeRx } } : null) : (trial.baseSim ? { day: VAX_CHECKPOINT } : null),
+    pathogen: m.pathogen,
+    res: { success: s.success, stars: s.stars, headline, side: s.side, cost: s.cost },
+  });
+  list.length = Math.min(list.length, ATTEMPTS_KEPT);
+  persist();
+}
+function attemptsHtml(m) {
+  const list = attemptsFor(m);
+  if (!list.length) return '';
+  return `<div class="att"><h3 class="sub">Recent attempts</h3>${list.map((a, i) => `
+    <div class="att-row"><div><b class="${a.res.success ? 'ok' : 'no'}">${a.res.success ? '✓' : '✗'} ${a.res.headline}</b>${a.res.stars && !m.sandbox ? ` <span class="att-stars">${'★'.repeat(a.res.stars)}</span>` : ''}
+      <small>${planText(m, a.plan)}${a.change ? ` → ${changeText(m, a.change)}` : ''}</small></div>
+      <button class="ghost" data-retry="${i}">Retry</button></div>`).join('')}
+    ${list.length > 1 ? `<button class="ghost" id="att-compare">Compare last ${Math.min(3, list.length)}</button>` : ''}</div>`;
+}
+function retryAttempt(m, a) {
+  if (m.kind) { rx = { ...a.plan }; renderTxLab(); buildPills(rx); }
+  else { design = { ...a.plan }; renderLab(); buildSpecimen(design); }
+  partInfo({ name: 'Loaded', desc: `${planText(m, a.plan)}.${a.change ? ` Last time you changed course at the checkpoint (${changeText(m, a.change)}).` : ''}` });
+}
+function wireAttempts(m) {
+  for (const b of document.querySelectorAll('#brief [data-retry]')) b.onclick = () => retryAttempt(m, attemptsFor(m)[+b.dataset.retry]);
+  if ($('att-compare')) $('att-compare').onclick = () => showCompare(m);
+}
+function showCompare(m) {
+  const list = attemptsFor(m).slice(0, 3), names = ['Latest', 'Before that', 'Earlier'];
+  const designRows = m.kind ? [
+    ['Drugs', a => [a.plan.a, a.plan.b].filter(Boolean).map(id => DRUG(id).name).join(' + ')],
+    ['Dose', a => DOSE_LV[a.plan.dose].name],
+    ['Per day', a => DRUG(a.plan.a).single && !a.plan.b ? '–' : `${a.plan.freq}×`],
+    ['Course', a => DRUG(a.plan.a).single && !a.plan.b ? 'one infusion' : `${a.plan.dur} days`],
+  ] : [
+    ['Carrier', a => part('carrier', a.plan.carrier).name],
+    ['Antigen', a => part('antigen', a.plan.antigen).name],
+    ['Adjuvant', a => part('adjuvant', a.plan.adjuvant).name],
+    ['Delivery', a => part('route', a.plan.route).name],
+    ['Doses', a => String(a.plan.doses)],
+  ];
+  designRows.push(['Checkpoint', a => a.change ? (m.kind ? `Changed on day ${a.change.day}` : '+ booster') : 'Kept plan']);
+  const resultRows = [
+    ['Result', a => `<span class="${a.res.success ? 'ok' : 'no'}">${a.res.headline}</span>`],
+    ['Side effects', a => pct(a.res.side)],
+    ['Cost', a => money(a.res.cost)],
+  ];
+  if (!m.sandbox) resultRows.push(['Stars', a => a.res.stars ? '★'.repeat(a.res.stars) : '–']);
+  // highlight the design choices that differ between attempts
+  const row = ([label, f], diffable) => {
+    const vals = list.map(f), differs = diffable && new Set(vals).size > 1;
+    return `<tr><td>${label}</td>${vals.map(v => `<td class="${differs ? 'diff' : ''}">${v}</td>`).join('')}</tr>`;
+  };
+  $('compare-body').innerHTML = `
+    <h2>Recent attempts</h2>
+    <div style="color:var(--muted);margin-bottom:12px">${m.name} · vs ${m.pathogen}. Highlighted cells are what you changed.</div>
+    <table class="cmp"><tr><th></th>${list.map((a, i) => `<th>${names[i]}</th>`).join('')}</tr>
+      ${designRows.map(r => row(r, true)).join('')}
+      <tr><td colspan="${list.length + 1}" class="cmp-gap"></td></tr>
+      ${resultRows.map(r => row(r, false)).join('')}
+      <tr><td></td>${list.map((a, i) => `<td><button class="ghost" data-cretry="${i}">Retry</button></td>`).join('')}</tr>
+    </table>
+    <div class="btns" style="margin-top:12px"><button class="primary" id="compare-close">Close</button></div>`;
+  $('compare').classList.remove('hidden');
+  $('compare-close').onclick = () => $('compare').classList.add('hidden');
+  for (const b of $('compare-body').querySelectorAll('[data-cretry]')) b.onclick = () => { $('compare').classList.add('hidden'); retryAttempt(m, list[+b.dataset.cretry]); };
+}
+
 // ---------- results ----------
 const signed = (v, fmt) => (v > 0 ? '+' : v < 0 ? '−' : '±') + fmt(Math.abs(v));
 const money = v => Math.round(v) ? `$${Math.round(v)}k` : '$0';
 function txOutcome(sim, m) {
   if (sim.hosp !== null) return { text: `Hospitalized day ${dayOf(sim.hosp)}`, ok: false };
-  if (sim.final < m.cureBelow) return { text: `${m.cureBelow > 1 ? 'Undetectable' : 'Cleared'} day ${dayOf(sim.cleared)}`, ok: true };
+  const gone = `${m.cureBelow > 1 ? 'Undetectable' : 'Cleared'} day ${dayOf(sim.cleared)}`;
+  if (sim.final < m.cureBelow && sim.side > m.maxSide) return { text: `${gone}, but side effects too harsh`, ok: false };
+  if (sim.final < m.cureBelow) return { text: gone, ok: true };
   return { text: sim.drugs.length ? 'Came back' : 'Still sick', ok: false };
 }
 // Side-by-side: no treatment / original plan / your plan (treatments), or schedule vs booster (vaccines).
@@ -1749,20 +2018,23 @@ function compareHtml(s, m) {
       summary = `Your change ${parts[0]}${parts.length > 1 ? ` (${parts.slice(1).join(', ')})` : ''}.`;
     }
   } else {
-    if (s.halted) return '';
+    if (s.halted && !trial.baseSim) return '';
     if (trial.baseSim) cols = [{ name: 'Original schedule', sim: trial.baseSim }, { name: 'With your booster', sim: s, you: true }];
     else if (trial.altSim) cols = [{ name: 'Your schedule', sim: s, you: true }, { name: 'What if: +1 booster', sim: trial.altSim }];
     else return '';
     rows = [
-      ['Protection', c => `<span class="${c.sim.protection >= m.minProtect ? 'ok' : 'no'}">${pct(c.sim.protection)}</span>`],
+      ['Protection', c => c.sim.halted ? '<span class="no">Halted</span>' : `<span class="${c.sim.protection >= m.minProtect ? 'ok' : 'no'}">${pct(c.sim.protection)}</span>`],
       ['Goal', c => c.sim.success ? '<span class="ok">Met</span>' : '<span class="no">Missed</span>'],
       ['Side effects', c => pct(c.sim.side)],
       ['Cost', c => money(c.sim.cost)],
     ];
     const [a, b] = cols.map(c => c.sim);
     const dp = b.protection - a.protection, ds = b.side - a.side, dc = b.cost - a.cost;
-    summary = trial.baseSim
+    summary = trial.baseSim && s.halted
+      ? `The booster pushed reactions to ${pct(s.side)}, past the ${pct(m.maxSide)} limit, and the trial was stopped.`
+      : trial.baseSim
       ? `The booster bought ${signed(dp, pct)} protection for ${signed(dc, money)} and ${signed(ds, pct)} side effects.`
+      : b.halted ? `Good thing you skipped it: the booster would have pushed reactions to ${pct(b.side)} and halted the trial.`
       : `Skipping the booster saved ${money(dc)}${ds > .005 ? ` and ${pct(ds)} side effects` : ''}. It would have ${dp > .005 ? `added ${pct(dp)} protection` : 'barely changed protection'}${!a.success && b.success ? ' and met the goal' : ''}.`;
   }
   const head = `<tr><th></th>${cols.map(c => `<th class="${c.you ? 'you' : ''}">${c.name}</th>`).join('')}</tr>`;
@@ -1780,6 +2052,7 @@ function breakdownHtml(s) {
     ${s.clue ? `<div class="clue"><b>Clue for next time</b>${s.clue}</div>` : ''}`;
 }
 function showResult() {
+  if (inspected) closeInspect();
   const s = trial.sim, m = trial.mission;
   let earned = 0;
   if (!m.sandbox) {
@@ -1789,6 +2062,7 @@ function showResult() {
     save.science += earned; save.missions[m.id] = rec; persist();
     $('sci').textContent = save.science;
   }
+  recordAttempt(m, s);
   const tx = !!m.kind;
   let notes = m.sandbox ? s.notes.filter(n => !n.startsWith('★')) : s.notes.slice();
   // for vaccines the breakdown explains the causes, so keep only the headline and bonus goals
@@ -1846,7 +2120,7 @@ function frame() {
     if (camTween.k >= 1) camTween = null;
   }
   if (mode === 'lab') updateSpecimen(dt, t);
-  else if (mode === 'trial' && trial.active) (trial.tx ? updateTxTrial : updateTrial)(dt, t);
+  else if (mode === 'trial' && trial.active) { (trial.tx ? updateTxTrial : updateTrial)(dt, t); updateInspect(dt); }
   else updateIdle(dt, t);
   // syringe plunge animation
   const push = syringe.userData.push || 0;

@@ -19,6 +19,7 @@ For current status, the Netlify deploy, and the idea backlog, read [`HANDOFF.md`
 - Each trial has one mid-trial checkpoint. For vaccines, day 10 offers an extra booster: `simulate()` reruns with one more dose, and the curves before day 14 stay identical. For treatments, `txCheckpointDay(m)` lets the player change the regimen: `simulateTx(rx, m, { day, rx: newRx })`. Keeping the plan must reproduce the no-checkpoint run exactly (cost, side effects, outcome). The harness's CHECKPOINT CHECKS enforce that, plus one rescue lesson per mission.
 - Treatment credit: `simulateTx()` also runs the same patient untreated (`untreated(m)`, cached per mission) and sets `effect` to `saved`, `faster` or `none`. The debrief headline and the "Recovered on their own" title come from it, so the immune system's own win is never credited to a drug. The harness's CREDIT CHECKS cover all three.
 - Days in player-facing text use `dayOf(t)` (rounded down), the same as the trial log's `D6`. Rounding up anywhere brings back the day-6/day-7 mismatch.
+- Checkpoint twists live on missions (`twist: { text, boostEff, sideMul, costMul, freqMax }`). They only change what a mid-trial change costs or does (`simulate(d, m, twist)` for a late booster, `{ day, rx, ...twist }` for treatments), so keeping the plan is never affected and campaign balance holds. Checkpoints show evidence (reactions so far, a typical range, an estimate band) rather than the exact outcome, and the player may choose an option that breaks the limit. Budget is the only hard block. TWIST CHECKS prove each twist bites.
 - The results comparison table reads `trial.baseSim` (the plan before a checkpoint change), `trial.altSim` (the booster the player skipped) and `sim.untreated`.
 - `simulate()` returns a `breakdown` (each part's contribution, 0–1 against the best available) and one `clue` aimed at the weakest link. The vaccine debrief shows these in place of a list of causes, so a new vaccine part needs a breakdown row and a clue.
 
@@ -29,7 +30,7 @@ For current status, the Netlify deploy, and the idea backlog, read [`HANDOFF.md`
 
 ## Save data
 
-- localStorage key `immunaut-save-v1`: `{ science, unlocked: [partOrDrugIds], missions: { id: { stars, done } }, sandbox }`. Jacob has real progress in it, so new fields default when missing.
+- localStorage key `immunaut-save-v1`: `{ science, unlocked: [partOrDrugIds], missions: { id: { stars, done } }, sandbox, attempts: { missionId: [last 5 runs] } }`. Jacob has real progress in it, so new fields default when missing.
 - Sandbox runs build a mission object with `sandbox: true`. They unlock everything and skip budget, science and stars.
 
 ## Gotchas

@@ -77,11 +77,32 @@ console.log('\nCHECKPOINT CHECKS');
 for (const [id, rx0, fix0, want, lesson] of CHANGES) {
   const m = M.TX_MISSIONS.find(x => x.id === id), day = M.txCheckpointDay(m);
   const rx = { b: null, ...rx0 }, fix = { b: null, ...fix0 };
-  const plain = M.simulateTx(rx, m), kept = M.simulateTx(rx, m, { day, rx }), changed = M.simulateTx(rx, m, { day, rx: fix });
+  // the mission's checkpoint twist applies to any change; keeping the plan must stay identical
+  const plain = M.simulateTx(rx, m), kept = M.simulateTx(rx, m, { day, rx }), changed = M.simulateTx(rx, m, { day, rx: fix, ...m.twist });
   const same = plain.success === kept.success && plain.final === kept.final && Math.abs(plain.cost - kept.cost) < 1e-9 && Math.abs(plain.side - kept.side) < 1e-9;
   const ok = same && changed.success === want; if (!ok) broken++;
   console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${id} ${lesson}${same ? '' : ' (keep-plan drifted)'}`);
 }
+// Checkpoint twists: each mission's twist only touches the change options, and it has to bite.
+console.log('\nTWIST CHECKS');
+const vm = id => M.MISSIONS.find(x => x.id === id);
+const TWISTS = [
+  ['m2 variant: a booster helps less', () => {
+    const m = vm('m2'), n = { carrier: 'inactivated', antigen: 'mix', adjuvant: 'alum', route: 'im', doses: 3 };
+    return M.simulate(n, m, m.twist).protection < M.simulate(n, m, {}).protection;
+  }],
+  ['m4 frail residents: a booster near the limit now halts the trial', () => {
+    const m = vm('m4'), n = { carrier: 'inactivated', antigen: 'spike', adjuvant: 'alum', route: 'im', doses: 2 };
+    return !M.simulate(n, m, {}).halted && M.simulate(n, m, m.twist).halted;
+  }],
+  ['t3 kidneys: a heavier switch now goes over the side-effect limit', () => {
+    const m = M.TX_MISSIONS.find(x => x.id === 't3'), day = M.txCheckpointDay(m);
+    const rx = { a: 'pen', b: null, dose: 'std', freq: 3, dur: 10 }, fix = { a: 'tetra', b: null, dose: 'std', freq: 2, dur: 14 };
+    return M.simulateTx(rx, m, { day, rx: fix }).success && !M.simulateTx(rx, m, { day, rx: fix, ...m.twist }).success;
+  }],
+];
+for (const [lesson, check] of TWISTS) { const ok = check(); if (!ok) broken++; console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${lesson}`); }
+
 // Credit: the debrief separates "the drug saved them", "the drug sped recovery" and
 // "the immune system won alone". A mild virus the body clears unaided tests the last two.
 const flu = M.TX_MISSIONS.find(x => x.id === 't2');

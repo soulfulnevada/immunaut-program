@@ -12,6 +12,9 @@ Built with Claude Code in one session. All of it works and was played through in
 | Battle view | Camera zooms in on the infection at exposure or treatment start (🔍/🌐 toggle). Every actor has its own shape (Y-shaped antibodies, capsule drugs, knobbed viruses, bumpy T cells, branching dendritic cells), with a key under the chart. Antibodies latch on and coated viruses grey out and stop tumbling before they pop. Resistant microbes wear orange shields that drugs bounce off. |
 | Mid-trial checkpoint | Vaccines: day-10 bloodwork with an option to add a booster. Treatments: lab results (load trend, % resistant per drug) with a plan editor. The debrief says whether the change helped compared with the original plan. |
 | Debriefs | Vaccines: "What drove your result" bars per part, weakest link highlighted, plus one clue. Treatments: credit compared with the untreated patient (saved them / sped recovery / recovered on their own). Both show a comparison table: no treatment, original plan and your change, or your schedule vs. the skipped booster. |
+| Inspect | Click or tap anything in a trial: it pauses, rings the target and explains what it is and what it's doing right now. |
+| Saved attempts | The lab keeps your last 5 runs per mission with Retry and a Compare view (last 3, changed choices highlighted). |
+| Checkpoint twists | Each mission (except the first of each campaign) has a fixed twist, e.g. a new variant, borderline kidneys, a pricier booster or a patient refusing extra pills. Choices can now break the side-effect limit and fail the trial. |
 | No-WebGL fallback | Shows a notice and the game still runs. |
 | Mobile layout | Works at phone width (panels stack). |
 | GitHub | Public repo https://github.com/soulfulnevada/immunaut-program, branch `main`. |
