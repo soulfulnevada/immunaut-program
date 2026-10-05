@@ -1644,7 +1644,7 @@ function obReportHtml(run) {
       ${medal('🏥', 'Town protected', run.medals.includes('town'), run.ch3.success ? `Chapter 3: ${run.ch3.outcome}.` : `Chapter 3 fell short: ${run.ch3.outcome}.`)}
       ${medal('🧫', 'Resistance contained', run.medals.includes('resist'), risen.length ? `${risen.map(([id, r]) => `${DRUG(id).name} rose to ${pct(r)}`).join(', ')} over the outbreak.` : 'No drug rose above its starting resistance.')}
       ${medal('💰', 'Budget left', run.medals.includes('budget'), run.grant ? `You needed a ${money(run.grant)} emergency grant.` : `${money(left)} left ($20k needed).`)}
-      ${medal('📋', 'Case-file commendation', !!com.tier, `${com.tier ? OB_TIER[com.tier] : 'None'}: ${com.pts} of 10 points (tested 2, right guess 1).`)}
+      ${medal('📋', 'Case-file commendation', !!com.tier, `${com.tier ? OB_TIER[com.tier] : 'None'}: ${com.pts} of 10 points (2 points for each tested field, 1 point for each right guess).`)}
     </div>
     <h3 class="sub">Your case file, graded</h3>
     <table class="cmp ob-grade"><tr><th></th><th>You had</th><th>The truth</th><th>Pts</th><th></th></tr>${fileRows}</table>
@@ -1961,7 +1961,8 @@ function setKey(ids) {
   $('key').innerHTML = ids.map(id => `<span><svg viewBox="0 0 16 16">${ICONS[id][1]}</svg>${ICONS[id][0]}</span>`).join('')
     + '<span class="key-tip">Click anything in 3D to inspect it</span>';
 }
-const VAX_LEGEND = [['#4fd1ff', 'Antibodies'], ['#ffa94d', 'T cells'], ['#ff5d6c', 'Side effects'], ['#e05cff', 'Virus']];
+const bugColor = m => m.bug === 'bacteria' ? '#5be38f' : '#e05cff';
+const vaxLegend = m => [['#4fd1ff', 'Antibodies'], ['#ffa94d', 'T cells'], ['#ff5d6c', 'Side effects'], [bugColor(m), m.bug === 'bacteria' ? 'Bacteria' : 'Virus']];
 const CAMS = {
   overview: { pos: new THREE.Vector3(-6, 32, 52), target: new THREE.Vector3(0, 0, 0), label: '🔍 Close-up' },
   closeup: { pos: SITE.clone().add(new THREE.Vector3(-9, 8, 17)), target: SITE.clone().add(new THREE.Vector3(-2, 0, 0)), label: '🌐 Overview' },
@@ -2040,7 +2041,7 @@ function startTrial() {
   resetWorld();
   setHunterColors([0x4fd1ff]); setHunterShape('antibody');
   trial.events = vaxEvents(sim, m, design, -1);
-  setupTrialHud(sim, 'Volunteer vitals', VAX_LEGEND);
+  setupTrialHud(sim, 'Volunteer vitals', vaxLegend(m));
   setKey(['antibody', m.bug === 'bacteria' ? 'bacteria' : 'virus', 'dc', 'bcell', 'tcell']);
 }
 function vaxCheckpoint() {
@@ -2131,7 +2132,7 @@ function drawChart() {
     trial.hist.forEach((h, i) => { const y = H - 6 - (h[key] / scale) * (H - 12); i ? g.lineTo(X(h.T), y) : g.moveTo(X(h.T), y); });
     g.stroke();
   };
-  line('fever', '#ff5d6c', 1); line('v', '#e05cff', 1); line('tc', '#ffa94d'); line('ab', '#4fd1ff');
+  line('fever', '#ff5d6c', 1); line('v', bugColor(m), 1); line('tc', '#ffa94d'); line('ab', '#4fd1ff');
 }
 
 // ---------- treatment trial ----------
