@@ -7,7 +7,8 @@ const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const between = (a, b) => html.slice(html.indexOf(a), html.indexOf(b));
 const src = ['MODEL', 'TX-MODEL', 'OUTBREAK-MODEL'].map(k => between(`// ${k}-START`, `// ${k}-END`)).join('\n');
 const M = new Function(src + `return { PARTS, MISSIONS, simulate, DRUGS, TX_MISSIONS, simulateTx, txCheckpointDay, challengeMet, CHALLENGE_TEXT,
-  OUTBREAK, OB_WAVES, obCh2Mission, obCh3TxMission, obCh3VaxMission, obCarry, obResistAfter, obCommendation, obResistContained, obAfterCh2, obFinish };`)();
+  OUTBREAK, OB_WAVES, obCh2Mission, obCh3TxMission, obCh3VaxMission, obCarry, obResistAfter, obCommendation, obResistContained, obAfterCh2, obFinish,
+  RIVERBEND, RB_WAITS, RB_WAVES, rbCh2Mission, rbCh3Mission, rbAfterCh2, rbFinish };`)();
 
 const starter = list => list.filter(p => p.unlock === 0).map(p => p.id);
 const every = list => list.map(p => p.id);
@@ -255,6 +256,50 @@ ob(tier({ read: 5 }) === 'gold' && tier({ read: 4, helped: 1 }) === 'gold' && ti
   ob(['small', 'normal', 'lingering', 'large'].every(w => reached.has(w)), `all four second-wave outcomes are reachable (${[...reached].join(', ')})`);
   ob(grantOk && granted > 0, `emergency grant appears exactly when the budget drops under $${M.OUTBREAK.floor}k, and tops it up to $${M.OUTBREAK.floor}k (${granted} routes)`);
   ob(medalOk, 'using the emergency grant always forfeits the budget medal');
+}
+
+
+// Riverbend Flu (docs/outbreak-2-riverbend-flu.md): the wait choice must be a real decision, and every winter state winnable.
+console.log('\nRIVERBEND CHECKS');
+{
+  const designs = [];
+  for (const carrier of allIds(M.PARTS.carrier)) for (const antigen of allIds(M.PARTS.antigen)) for (const adjuvant of allIds(M.PARTS.adjuvant))
+    for (const route of allIds(M.PARTS.route)) for (const doses of [1, 2, 3]) designs.push({ carrier, antigen, adjuvant, route, doses });
+  const budget2 = M.RIVERBEND.budget - 20;
+  const best = Object.fromEntries(Object.keys(M.RB_WAITS).map(w => [w, 0])); let contested = 0;
+  for (const d of designs) {
+    const r = Object.keys(M.RB_WAITS).map(w => { const m = M.rbCh2Mission(w, budget2), s = M.simulate(d, m); return { w, ok: s.success && s.cost <= budget2, margin: s.protection - m.minProtect }; })
+      .filter(x => x.ok).sort((a, b) => b.margin - a.margin);
+    if (!r.length) continue; contested++; best[r[0].w]++;
+  }
+  const shares = Object.entries(best).map(([w, n]) => `${w} ${Math.round(n / contested * 100)}%`).join(', ');
+  ob(Object.values(best).every(n => n / contested >= .15), `the wait choice is real: each option is the best choice for at least 15% of winning designs (${shares})`);
+  let dead = 0, escapeBites = true;
+  for (const wave of Object.keys(M.RB_WAVES)) {
+    const wins = escape => designs.filter(d => { const s = M.simulate(d, M.rbCh3Mission({ wave, escape }, M.RIVERBEND.floor)); return s.success && s.cost <= M.RIVERBEND.floor; }).length;
+    const normal = wins(false), escaped = wins(true);
+    if (!normal || !escaped) dead++;
+    if (escaped >= normal) escapeBites = false;
+  }
+  ob(dead === 0, `every winter state (3 waves × normal/escaped strain) is winnable within $${M.RIVERBEND.floor}k`);
+  ob(escapeBites, 'immune escape bites: a spike-driven winter strain always leaves fewer winning designs');
+  const spike = { carrier: 'vector', antigen: 'spike', adjuvant: 'alum', route: 'nasal', doses: 2 };
+  const prot = escape => M.simulate(spike, M.rbCh3Mission({ wave: 'normal', escape }, 100)).protection;
+  ob(prot(true) < prot(false) - .05, 'a spike vaccine matches the escaped winter strain clearly worse');
+  const run = { spent: { tests: 10, ch2: 0, ch3: 0 }, file: {} }, waves = new Set();
+  let grantOk = true;
+  for (const d of designs) for (const w of Object.keys(M.RB_WAITS)) {
+    const m = M.rbCh2Mission(w, M.RIVERBEND.budget - 10), s = M.simulate(d, m);
+    if (s.cost > m.budget) continue;
+    const next = M.rbAfterCh2(run, s, m, d); waves.add(next.ch2.wave);
+    const left = M.RIVERBEND.budget - 10 - s.cost;
+    if ((next.grant > 0) !== (left < M.RIVERBEND.floor)) grantOk = false;
+    if (next.ch2.escape !== (d.antigen === 'spike')) grantOk = false;
+  }
+  ob(['small', 'normal', 'large'].every(w => waves.has(w)) && grantOk, `all three winter waves are reachable; grant and escape flags follow the rules (${[...waves].join(', ')})`);
+  const rbFile = kinds => Object.fromEntries(M.RIVERBEND.tests.map((t, i) => [t.field, kinds[i] === 'read' ? { tested: true, value: M.RIVERBEND.truth[t.field] } : {}]));
+  ob(M.obCommendation(rbFile(['read', 'read', 'read', 'read', 'read']), M.RIVERBEND).tier === 'gold' && M.obCommendation(rbFile([]), M.RIVERBEND).tier === null,
+    'commendation scoring works on Riverbend\'s own tests');
 }
 
 process.exitCode = broken ? 1 : 0;

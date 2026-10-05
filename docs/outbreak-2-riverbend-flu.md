@@ -1,6 +1,6 @@
 # Outbreak 2: Riverbend Flu (design sketch v2)
 
-Status: **draft for review. Nothing is built yet.** It reuses Harbor Fever's three-chapter framework (`docs/outbreak-campaign.md`): shared budget, case file with evidence to read, carry-forward rules on fixed values, snapshots and replays, harbor-style map, consequence card, town report. This doc only covers what's **different**. v2 applies Jacob and Codex's review (see "Changes from v1").
+Status: **built as specified (v2)**. Harness tuning set the three timings to: ship now (drift 0.5, exposure day 50, goal 55%), wait 2 weeks (0.28, day 36, 63%), wait 4 weeks (0.08, day 21, 70%). Each is the best choice for about a third of winning designs: 3-dose plans favor shipping now, 2-dose plans waiting 2 weeks, 1-dose plans waiting 4 weeks. Winter drift is 0.45, or 0.75 after a spike vaccine. It reuses Harbor Fever's three-chapter framework (`docs/outbreak-campaign.md`): shared budget, case file with evidence to read, carry-forward rules on fixed values, snapshots and replays, harbor-style map, consequence card, town report. This doc only covers what's **different**. v2 applies Jacob and Codex's review (see "Changes from v1").
 
 ## Where it lives
 

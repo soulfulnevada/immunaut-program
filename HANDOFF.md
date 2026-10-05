@@ -37,7 +37,7 @@ After that, every push to `main` redeploys.
 
 ## Outbreak campaign (built)
 
-The 🌊 Outbreak tab runs Harbor Fever: investigate (5 paid lab tests whose evidence the player reads, or asks the lab tech for a point; case file) → respond (treatment) → adapt (vaccinate or treat a second wave shaped by chapter 2) → town report (3 medals plus a case-file commendation). Design and rules: [`docs/outbreak-campaign.md`](docs/outbreak-campaign.md) (v3, as built). The next planned step is a second outbreak on the same framework: **Riverbend Flu**, a fast-mutating virus. Its design sketch is in [`docs/outbreak-2-riverbend-flu.md`](docs/outbreak-2-riverbend-flu.md) and is awaiting review. Don't build it until Jacob signs off.
+The 🌊 Outbreak tab runs Harbor Fever: investigate (5 paid lab tests whose evidence the player reads, or asks the lab tech for a point; case file) → respond (treatment) → adapt (vaccinate or treat a second wave shaped by chapter 2) → town report (3 medals plus a case-file commendation). Design and rules: [`docs/outbreak-campaign.md`](docs/outbreak-campaign.md) (v3, as built). **Riverbend Flu** (built) is the second story card: a fast-mutating virus, vaccines only, with one new decision (ship now / wait 2 weeks / wait 4 weeks). It unlocks after Harbor Fever is finished once. Design: [`docs/outbreak-2-riverbend-flu.md`](docs/outbreak-2-riverbend-flu.md).
 
 ## Idea backlog
 
