@@ -6,7 +6,7 @@ import fs from 'fs';
 const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const between = (a, b) => html.slice(html.indexOf(a), html.indexOf(b));
 const src = between('// MODEL-START', '// MODEL-END') + between('// TX-MODEL-START', '// TX-MODEL-END');
-const M = new Function(src + 'return { PARTS, MISSIONS, simulate, DRUGS, TX_MISSIONS, simulateTx, txCheckpointDay };')();
+const M = new Function(src + 'return { PARTS, MISSIONS, simulate, DRUGS, TX_MISSIONS, simulateTx, txCheckpointDay, challengeMet, CHALLENGE_TEXT };')();
 
 const starter = list => list.filter(p => p.unlock === 0).map(p => p.id);
 const every = list => list.map(p => p.id);
@@ -102,6 +102,53 @@ const TWISTS = [
   }],
 ];
 for (const [lesson, check] of TWISTS) { const ok = check(); if (!ok) broken++; console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${lesson}`); }
+
+// Challenges: optional goals after a win. Each must be possible but hard: passed by 2-40% of winning designs.
+console.log('\nCHALLENGE CHECKS (share of winning designs that also meet it)');
+const challengeShare = (m, wins) => (m.challenges || []).map(c => [c, wins.filter(s => M.challengeMet(c, s)).length / wins.length]);
+const allIds = list => list.map(p => p.id);
+for (const m of M.MISSIONS) {
+  const wins = [];
+  for (const carrier of allIds(M.PARTS.carrier)) for (const antigen of allIds(M.PARTS.antigen)) for (const adjuvant of allIds(M.PARTS.adjuvant))
+    for (const route of allIds(M.PARTS.route)) for (const doses of [1, 2, 3]) {
+      const s = M.simulate({ carrier, antigen, adjuvant, route, doses }, m);
+      if (s.cost <= m.budget && s.success) wins.push(s);
+    }
+  for (const [c, share] of challengeShare(m, wins)) {
+    const ok = share >= .02 && share <= .4; if (!ok) broken++;
+    console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${m.id} ${M.CHALLENGE_TEXT[c.kind](c)}: ${Math.round(share * 100)}%`);
+  }
+}
+for (const m of M.TX_MISSIONS) {
+  const wins = [], drugIds = allIds(M.DRUGS);
+  for (const a of drugIds) for (const b of [null, ...drugIds]) { if (b && b <= a) continue;
+    for (const dose of ['low', 'std', 'high']) for (const freq of [1, 2, 3]) for (const dur of m.durations) {
+      const s = M.simulateTx({ a, b, dose, freq, dur }, m);
+      if (s.cost <= m.budget && s.success) wins.push(s);
+    } }
+  for (const [c, share] of challengeShare(m, wins)) {
+    const ok = share >= .02 && share <= .4; if (!ok) broken++;
+    console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${m.id} ${M.CHALLENGE_TEXT[c.kind](c)}: ${Math.round(share * 100)}%`);
+  }
+}
+
+// Predictions: the debrief grades the player's guess against `limiter`, so each lesson case must name the right cause.
+console.log('\nPREDICTION CHECKS');
+const vax = (id, d) => M.simulate(d, M.MISSIONS.find(x => x.id === id)).limiter;
+const tx = (id, rx) => M.simulateTx({ b: null, ...rx }, M.TX_MISSIONS.find(x => x.id === id)).limiter;
+const PREDICT = [
+  ['m1 one gentle dose fades before exposure', () => vax('m1', { carrier: 'subunit', antigen: 'spike', adjuvant: 'none', route: 'im', doses: 1 }), 'durability'],
+  ['m4 harsh design trips the safety board', () => vax('m4', { carrier: 'live', antigen: 'spike', adjuvant: 'tlr', route: 'im', doses: 2 }), 'side'],
+  ['m1 winning design has no limiter', () => vax('m1', { carrier: 'inactivated', antigen: 'spike', adjuvant: 'alum', route: 'im', doses: 2 }), 'none'],
+  ['t1 3-day course is not enough drug', () => tx('t1', { a: 'pen', dose: 'std', freq: 3, dur: 3 }), 'short'],
+  ['t2 antibiotic for flu is the wrong drug', () => tx('t2', { a: 'pen', dose: 'std', freq: 3, dur: 7 }), 'wrong'],
+  ['t3 penicillin loses to resistance', () => tx('t3', { a: 'pen', dose: 'std', freq: 3, dur: 10 }), 'resistance'],
+  ['t3 broad-spectrum is too harsh', () => tx('t3', { a: 'broad', dose: 'std', freq: 1, dur: 10 }), 'side'],
+];
+for (const [lesson, run, want] of PREDICT) {
+  const got = run(), ok = got === want; if (!ok) broken++;
+  console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${lesson}${ok ? '' : ` (got ${got})`}`);
+}
 
 // Credit: the debrief separates "the drug saved them", "the drug sped recovery" and
 // "the immune system won alone". A mild virus the body clears unaided tests the last two.
