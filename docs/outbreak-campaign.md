@@ -155,6 +155,14 @@ Then playtest one complete Harbor Fever run before anything else.
 
 Same three-chapter framework, different pressure: a **fast-mutating virus**, where strain matching, timing and vaccine durability are central and drugs matter less. Built only after Harbor Fever works.
 
+## Additions after v3 (built)
+
+- **Reading the evidence.** Buying a test shows evidence (a microscope view, a growth curve, a drug dish, patient charts, gene sequences). The player picks what it shows, or asks the lab tech, who explains it at the cost of a point. Scoring per field: read correctly yourself 2, lab-tech help 1, misread 0, untested right guess 1, wrong or blank 0. Tiers unchanged (gold 9–10, silver 7–8, bronze 4–6).
+- **Honest labels for readings.** Briefs show "Lab result (explained by the lab tech)", "Your reading of the …", "Your assessment … (untested)" or "Not tested". The side-effect meter shows the limit the player *believes* (frail → the real limit, healthy → 60%, blank → unknown); the real limit always applies in the trial. A misread sequencing counts as not knowing, so the strain shift still surprises a spike vaccine.
+- **What chapter 2 set up.** The chapter 3 screen and the town report explain cause → effect for the wave, each drug whose resistance rose (and why), and the money, with the best case for comparison.
+- **Harbor map.** A small read-only map (docks, market, Old Town with the clinic, Hillside) shows the first wave, where the second wave is expected to reach (1–4 districts by wave size), and whether it was stopped.
+- **Tested routes.** The harness checks that all four second-wave outcomes are reachable, that the emergency grant appears exactly when needed and tops up to $60k, and that it always forfeits the 💰 medal. Note: the "still infected" outcome is reachable but rare (one chapter 2 regimen).
+
 ## Changes from v2
 
 - **No free answers:** chapter 1 ends with a summary, not a grade. Guesses and untested fields are graded only in the town report, and chapter 2–3 debriefs describe what the player observed instead of quoting hidden lab facts.

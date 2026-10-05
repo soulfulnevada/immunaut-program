@@ -7,7 +7,7 @@ const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const between = (a, b) => html.slice(html.indexOf(a), html.indexOf(b));
 const src = ['MODEL', 'TX-MODEL', 'OUTBREAK-MODEL'].map(k => between(`// ${k}-START`, `// ${k}-END`)).join('\n');
 const M = new Function(src + `return { PARTS, MISSIONS, simulate, DRUGS, TX_MISSIONS, simulateTx, txCheckpointDay, challengeMet, CHALLENGE_TEXT,
-  OUTBREAK, OB_WAVES, obCh2Mission, obCh3TxMission, obCh3VaxMission, obCarry, obResistAfter, obCommendation, obResistContained };`)();
+  OUTBREAK, OB_WAVES, obCh2Mission, obCh3TxMission, obCh3VaxMission, obCarry, obResistAfter, obCommendation, obResistContained, obAfterCh2, obFinish };`)();
 
 const starter = list => list.filter(p => p.unlock === 0).map(p => p.id);
 const every = list => list.map(p => p.id);
@@ -217,8 +217,44 @@ ob(M.obCarry(M.simulateTx({ a: 'pen', b: null, dose: 'std', freq: 3, dur: 10 }, 
 const vaxLarge = antigen => M.simulate({ carrier: 'vector', antigen, adjuvant: 'none', route: 'nasal', doses: 2 }, M.obCh3VaxMission({ wave: 'large', resist: {} }, 100, true)).success;
 ob(!vaxLarge('spike') && vaxLarge('core'), 'skipping sequencing hurts: a spike vaccine misses the large wave where a conserved-core one passes');
 ob(M.obResistContained(base) && !M.obResistContained({ ...base, pen: .45 }), 'resistance medal: starting levels pass, any rise fails');
-const file = (tested, guessRight) => Object.fromEntries(M.OUTBREAK.tests.map((t, i) => [t.field, i < tested ? { tested: true, value: M.OUTBREAK.truth[t.field] } : { value: i < tested + guessRight ? M.OUTBREAK.truth[t.field] : 'wrong' }]));
-ob(M.obCommendation(file(5, 0)).tier === 'gold' && M.obCommendation(file(4, 1)).tier === 'gold' && M.obCommendation(file(3, 1)).tier === 'silver'
-  && M.obCommendation(file(0, 5)).tier === 'bronze' && M.obCommendation(file(0, 3)).tier === null, 'commendation tiers: tested 2, right guess 1; gold 9-10, silver 7-8, bronze 4-6');
+// read: tested fields read correctly; helped: tested fields explained by the lab tech; misread; guessRight: untested right guesses
+const file = ({ read = 0, helped = 0, misread = 0, guessRight = 0 }) => {
+  const kinds = [...Array(read).fill('read'), ...Array(helped).fill('helped'), ...Array(misread).fill('misread'), ...Array(guessRight).fill('guess')];
+  return Object.fromEntries(M.OUTBREAK.tests.map((t, i) => {
+    const truth = M.OUTBREAK.truth[t.field], k = kinds[i];
+    return [t.field, k === 'read' ? { tested: true, value: truth } : k === 'helped' ? { tested: true, helped: true, value: truth }
+      : k === 'misread' ? { tested: true, value: 'wrong' } : k === 'guess' ? { value: truth } : { value: 'wrong' }];
+  }));
+};
+const tier = f => M.obCommendation(file(f)).tier;
+ob(tier({ read: 5 }) === 'gold' && tier({ read: 4, helped: 1 }) === 'gold' && tier({ read: 4, misread: 1 }) === 'silver' && tier({ read: 3, guessRight: 1 }) === 'silver'
+  && tier({ helped: 5 }) === 'bronze' && tier({ guessRight: 5 }) === 'bronze' && tier({ guessRight: 3 }) === null,
+  'commendation: read yourself 2, lab-tech help 1, misread 0, right guess 1; gold 9-10, silver 7-8, bronze 4-6');
+
+
+// Every chapter 2 route through the money rules: endings reachable, grant exactly when needed, grant forfeits the budget medal.
+{
+  const reached = new Set();
+  let grantOk = true, medalOk = true, granted = 0;
+  const cheapWin = { a: 'tetra', b: null, dose: 'std', freq: 1, dur: 10 };
+  for (const rx of allRegs) {
+    const run = { spent: { tests: 7, ch2: 0, ch3: 0 }, file: {} };
+    const m2 = M.obCh2Mission(M.OUTBREAK.budget - 7), s2 = M.simulateTx(rx, m2);
+    if (s2.cost > m2.budget) continue;
+    const next = M.obAfterCh2(run, s2, m2);
+    reached.add(next.ch2.wave);
+    const left = M.OUTBREAK.budget - 7 - s2.cost;
+    if ((next.grant > 0) !== (left < M.OUTBREAK.floor) || left + next.grant < M.OUTBREAK.floor - 1e-9) grantOk = false;
+    if (next.grant > 0) {
+      granted++;
+      const run3 = { ...run, spent: { tests: 7, ch2: s2.cost, ch3: 0 }, ch2: next.ch2, grant: next.grant };
+      const m3 = M.obCh3TxMission(next.ch2, left + next.grant), s3 = M.simulateTx(cheapWin, m3);
+      if (M.obFinish(run3, s3, m3).medals.includes('budget')) medalOk = false;
+    }
+  }
+  ob(['small', 'normal', 'lingering', 'large'].every(w => reached.has(w)), `all four second-wave outcomes are reachable (${[...reached].join(', ')})`);
+  ob(grantOk && granted > 0, `emergency grant appears exactly when the budget drops under $${M.OUTBREAK.floor}k, and tops it up to $${M.OUTBREAK.floor}k (${granted} routes)`);
+  ob(medalOk, 'using the emergency grant always forfeits the budget medal');
+}
 
 process.exitCode = broken ? 1 : 0;

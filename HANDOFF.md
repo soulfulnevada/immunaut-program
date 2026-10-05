@@ -37,7 +37,7 @@ After that, every push to `main` redeploys.
 
 ## Outbreak campaign (built)
 
-The 🌊 Outbreak tab runs Harbor Fever: investigate (5 paid lab tests, case file) → respond (treatment) → adapt (vaccinate or treat a second wave shaped by chapter 2) → town report (3 medals plus a case-file commendation). Design and rules: [`docs/outbreak-campaign.md`](docs/outbreak-campaign.md) (v3, as built). The next planned step is a second outbreak on the same framework (a fast-mutating virus), only after Harbor Fever has been playtested.
+The 🌊 Outbreak tab runs Harbor Fever: investigate (5 paid lab tests whose evidence the player reads, or asks the lab tech for a point; case file) → respond (treatment) → adapt (vaccinate or treat a second wave shaped by chapter 2) → town report (3 medals plus a case-file commendation). Design and rules: [`docs/outbreak-campaign.md`](docs/outbreak-campaign.md) (v3, as built). The next planned step is a second outbreak on the same framework (a fast-mutating virus), only after Harbor Fever has been playtested.
 
 ## Idea backlog
 
