@@ -136,6 +136,35 @@
   .btns { display: flex; gap: 8px; }
   .btns button { flex: 1; }
   .ok { color: var(--good); } .no { color: var(--bad); }
+  h3.sub { margin: 0 0 8px; font-size: 13px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  .bd { display: grid; gap: 6px; margin-bottom: 12px; }
+  .bd-row { display: grid; grid-template-columns: 1fr 90px 44px; gap: 10px; align-items: center; padding: 6px 8px; border-radius: 8px; }
+  .bd-row b { display: block; font-size: 13px; font-weight: 600; }
+  .bd-row small { color: var(--muted); font-size: 11px; }
+  .bd-row span { text-align: right; font-weight: 600; font-size: 13px; }
+  .bd-row .bar { margin: 0; }
+  .bd-row.weak { background: #ff5d6c14; box-shadow: inset 0 0 0 1px #ff5d6c55; }
+  .clue { background: #4fd1ff12; border: 1px solid #4fd1ff44; border-radius: 10px; padding: 10px 12px; margin-bottom: 14px; font-size: 13px; color: #d6e6fb; }
+  .clue b { display: block; color: var(--accent); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 2px; }
+  .modal.cp { background: #05080f66; }
+  .cp-kicker { color: var(--accent); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .1em; }
+  .cp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin: 14px 0 10px; }
+  .cp-grid > div { background: #ffffff08; border-radius: 10px; padding: 10px; }
+  .cp-grid small { display: block; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+  .cp-grid b { font: 700 18px "Exo 2", sans-serif; }
+  .cp-grid em { display: block; font-style: normal; color: var(--muted); font-size: 12px; }
+  .cp-note { color: #c9d5ea; font-size: 13px; margin: 0 0 12px; }
+  .cp-choices { display: grid; gap: 8px; }
+  .cp-choice { text-align: left; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line); background: #ffffff06; }
+  .cp-choice:hover:not(:disabled) { border-color: var(--accent); background: #4fd1ff10; }
+  .cp-choice:disabled { opacity: .5; cursor: not-allowed; }
+  .cp-choice b { display: block; font-size: 15px; }
+  .cp-choice small { color: var(--muted); }
+  .cp-form { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+  .cp-form label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
+  .cp-form select { padding: 8px; border-radius: 8px; border: 1px solid var(--line); background: #0a0e19; color: var(--text); font: inherit; }
+  .cp-preview { font-size: 13px; color: #c9d5ea; margin-bottom: 14px; }
+  #no3d { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 4; max-width: min(520px, calc(100% - 32px)); padding: 10px 14px; border-radius: 10px; background: #3a1a10; border: 1px solid var(--warn); color: #ffd9b0; font-size: 13px; }
 
   @media (max-width: 1100px) {
     #part-info { display: none; }
@@ -192,6 +221,7 @@
     <div class="day">Day <span id="day">0</span> <small>/ <span id="day-end">0</span></small></div>
     <div class="warp" id="warp"></div>
     <button class="ghost" id="skip">Skip ⏭</button>
+    <button class="ghost" id="cam">🔍 Close-up</button>
   </div>
   <div class="panel" id="log"><h3>Trial log</h3><div id="log-items"></div></div>
   <div class="panel" id="vitals">
@@ -202,6 +232,8 @@
 </section>
 
 <div id="result" class="modal hidden"><div class="card2" id="result-body"></div></div>
+<div id="checkpoint" class="modal hidden cp"><div class="card2" id="cp-body"></div></div>
+<div id="no3d" class="hidden">3D view unavailable: this browser has WebGL graphics turned off. The game still plays, but turn on hardware acceleration to watch the battle.</div>
 
 <script type="module">
 import * as THREE from 'three';
@@ -309,8 +341,34 @@ function simulate(d, m) {
   if (success && !bonusProtect) notes.push(`★ Bonus: reach ${pct(Math.min(.97, m.minProtect + .15))} protection.`);
   if (success && !bonusCheap) notes.push(`★ Bonus: spend $${Math.floor(m.budget * .75)}k or less.`);
 
+  // How each part of the design contributed, scaled 0-1 against the best available.
+  // The weakest link becomes the debrief's clue.
+  const lasting = peakAb > 0 ? abC / peakAb : 0;
+  const breakdown = [
+    { key: 'delivery', label: 'Reached immune cells', value: delivered / .95, show: pct(delivered),
+      why: `${c.name}${r.id === 'nasal' ? ' by nasal spray' : ''}${spoil > 0 ? `, ${pct(spoil)} spoiled` : ''}`,
+      clue: spoil > .2 ? `${pct(spoil)} of your doses spoiled without refrigeration. A carrier with higher shelf stability survives the trip.`
+        : `Only ${pct(delivered)} of each dose reached immune cells. Viral vector, mRNA and live carriers deliver far more than a ${c.name.toLowerCase()}.` },
+    { key: 'potency', label: 'Carrier strength', value: c.potency, show: pct(c.potency), why: c.name,
+      clue: `${c.name} is a gentle trigger (${pct(c.potency)} strength). A stronger carrier, or an adjuvant to make up for it, lifts the whole response.` },
+    { key: 'match', label: 'Antigen match', value: match, show: pct(match), why: `${a.name}${escape > 0 ? `, strain drifted ${pct(escape)}` : ''}`,
+      clue: escape > .1 ? `The strain had drifted, so your ${a.name.toLowerCase()} only matched ${pct(1 - escape)}. A Conserved Core target ignores mutation.`
+        : `${a.name} is a narrower target. Surface Spike gives the strongest response when the strain hasn't mutated.` },
+    { key: 'adjuvant', label: 'Adjuvant boost', value: (1 + j.ab) / 1.45, show: `+${pct(j.ab)}`, why: j.name,
+      clue: j.id === 'none' ? 'You used no adjuvant. Alum or Squalene would boost antibodies by 25–45% for a little extra soreness.'
+        : `${j.name} adds +${pct(j.ab)}. Squalene Emulsion adds the most antibodies.` },
+    { key: 'boosters', label: 'Booster doses', value: boost(d.doses - 1) / 2, show: `${d.doses}×`, why: `${d.doses} dose${d.doses > 1 ? 's' : ''}`,
+      clue: `${d.doses === 1 ? 'A single dose gives one wave of antibodies.' : `${d.doses} doses helped.`} Each booster adds +50% on top and makes immunity last longer.` },
+    { key: 'lasting', label: `Still active on day ${ch}`, value: lasting, show: pct(lasting), why: `memory ${pct(memory)}`,
+      clue: `Only ${pct(lasting)} of your peak antibodies were left by exposure on day ${ch}. More doses, a TLR Agonist or a live carrier build longer-lasting memory.` },
+  ];
+  const weakest = halted ? null : breakdown.slice().sort((x, y) => x.value - y.value)[0];
+  let clue = halted ? null : weakest.clue;
+  if (!halted && m.resp && r.id === 'im' && mucosal === 0 && weakest.value > .6)
+    clue = 'This pathogen enters through the airways. A nasal spray builds defenses right where it lands (+15% protection).';
+
   return { spoil, delivered, escape, abBase, tBase, memory, doseDays, ab, tc, antigen, fever, virus, side,
-    protection, cost, halted, success, stars, notes, peakAb, end: halted ? 2.5 : ch + 14 };
+    protection, cost, halted, success, stars, notes, peakAb, breakdown, clue, mucosal, end: halted ? 2.5 : ch + 14 };
 }
 // MODEL-END
 
@@ -338,37 +396,74 @@ const DRUG = id => DRUGS.find(d => d.id === id);
 const EC50 = .3, RES_FOLD = 6, CAP = 1e10;
 const hill = (c, ec) => c * c / (c * c + ec * ec);
 
-function txDoses(rx, m, dr) {
-  if (dr.single) return [m.startDay];
-  const t = []; let i = 0;
-  for (let day = 0; day < rx.dur; day++) for (let k = 0; k < rx.freq; k++) {
-    i++;
-    if (m.adherence >= 1 || ((i * 0.6180339887) % 1) < m.adherence) t.push(m.startDay + day + k / rx.freq);
+// A plan can change once mid-course: `change` = { day, rx } replaces the regimen from that day on.
+const rxDrugs = rx => [rx.a, rx.b].filter(Boolean);
+const txCheckpointDay = m => m.startDay + (m.cureBelow > 1 ? 7 : 3);
+function txPhases(rx, m, change) {
+  if (!change) return [{ rx, from: -Infinity, to: Infinity, days: () => rx.dur }];
+  const done = change.day - m.startDay; // course days already behind us
+  return [
+    { rx, from: -Infinity, to: change.day, days: () => Math.min(rx.dur, done) },
+    { rx: change.rx, from: change.day, to: Infinity, days: () => Math.max(0, change.rx.dur - done) },
+  ];
+}
+// dose times and amounts per drug id
+function txSchedule(rx, m, change) {
+  const out = {};
+  txPhases(rx, m, change).forEach((ph, pi) => {
+    const amt = DOSE_LV[ph.rx.dose].c;
+    for (const id of rxDrugs(ph.rx)) {
+      const dr = DRUG(id), list = out[id] || (out[id] = []);
+      if (dr.single) {
+        // one infusion lasts weeks; a carried-over infusion isn't repeated
+        if (pi === 0) list.push({ t: m.startDay, amt });
+        else if (!list.length) list.push({ t: change.day, amt });
+        continue;
+      }
+      let i = 0;
+      for (let day = 0; day < ph.rx.dur; day++) for (let k = 0; k < ph.rx.freq; k++) {
+        i++;
+        const t = m.startDay + day + k / ph.rx.freq;
+        if (t < ph.from || t >= ph.to) continue;
+        if (m.adherence >= 1 || ((i * 0.6180339887) % 1) < m.adherence) list.push({ t, amt });
+      }
+    }
+  });
+  return out;
+}
+// per-drug totals across phases: days on it, strongest dose level, most frequent schedule, doses bought
+function txUsage(rx, m, change) {
+  const use = {};
+  for (const ph of txPhases(rx, m, change)) for (const id of rxDrugs(ph.rx)) {
+    const dr = DRUG(id), days = ph.days(), dl = DOSE_LV[ph.rx.dose];
+    const u = use[id] || (use[id] = { dr, days: 0, tox: 0, freq: 0, bought: 0 });
+    if (dr.single) { if (!u.bought) { u.bought = dl.c; u.tox = dl.tox; } continue; }
+    if (days <= 0) continue;
+    u.days += days; u.tox = Math.max(u.tox, dl.tox); u.freq = Math.max(u.freq, ph.rx.freq); u.bought += dl.c * days * ph.rx.freq;
   }
-  return t;
+  return Object.values(use).filter(u => u.bought > 0);
 }
-function txCost(rx, m) {
-  return [rx.a, rx.b].filter(Boolean).map(DRUG).reduce((s, dr) => {
-    const n = dr.single ? 1 : rx.dur * rx.freq;
-    return s + dr.cost * DOSE_LV[rx.dose].c * n;
-  }, 0);
+function txCost(rx, m, change) {
+  return txUsage(rx, m, change).reduce((s, u) => s + u.dr.cost * u.bought, 0);
 }
-function txSide(rx, m) {
-  const dl = DOSE_LV[rx.dose];
-  return [rx.a, rx.b].filter(Boolean).map(DRUG).reduce((s, dr) => {
-    const len = dr.single ? 1 : Math.min(2, rx.dur / 7);
-    return s + dr.tox * dl.tox * (.6 + .4 * len) * (dr.single ? 1 : (.8 + .1 * rx.freq)) + dr.gut * dl.tox * (dr.single ? 0 : rx.dur / 14);
+function txSide(rx, m, change) {
+  return txUsage(rx, m, change).reduce((s, { dr, days, tox, freq }) => {
+    const len = dr.single ? 1 : Math.min(2, days / 7);
+    return s + dr.tox * tox * (.6 + .4 * len) * (dr.single ? 1 : (.8 + .1 * freq)) + dr.gut * tox * (dr.single ? 0 : days / 14);
   }, 0);
 }
 
-function simulateTx(rx, m) {
-  const drugs = [rx.a, rx.b].filter(Boolean).map(DRUG);
-  const n = drugs.length, G = 1 << n, dl = DOSE_LV[rx.dose];
-  const doses = drugs.map(dr => txDoses(rx, m, dr));
+function simulateTx(rx, m, change = null) {
+  const finalRx = change ? change.rx : rx;
+  const sched = txSchedule(rx, m, change);
+  const ids = [...new Set([...rxDrugs(rx), ...(change ? rxDrugs(change.rx) : [])])];
+  const drugs = ids.map(DRUG);
+  const n = drugs.length, G = 1 << n;
+  const doses = ids.map(id => (sched[id] || []).map(d => d.t));
   const works = drugs.map(dr => dr.target === m.kind);
   const mu = drugs.map(dr => m.mutation * (1 - dr.barrier));
   const pre = drugs.map(dr => m.preResist[dr.id] || 0);
-  const conc = (j, t) => { let c = 0; for (const td of doses[j]) if (t >= td) c += Math.exp(-Math.LN2 * (t - td) * 24 / drugs[j].hl); return c * dl.c; };
+  const conc = (j, t) => { let c = 0; for (const d of sched[ids[j]] || []) if (t >= d.t) c += d.amt * Math.exp(-Math.LN2 * (t - d.t) * 24 / drugs[j].hl); return c; };
 
   // starting population: susceptible plus standing resistant mutants
   const N = new Float64Array(G);
@@ -380,12 +475,15 @@ function simulateTx(rx, m) {
   N[0] = m.n0 - N.reduce((a, b) => a + b, 0);
   const R0 = Array.from(N);
 
-  const dt = .05, hist = [];
+  const dt = .05, hist = [], cpDay = txCheckpointDay(m);
   let hosp = null, cleared = null, maxRGrowth = 0, peak = 0, sickDays = 0, lastDose = Math.max(m.startDay, ...doses.flat());
+  let startLoad = m.n0, snap = null;
   let t = 0;
   for (; t <= m.days + 1e-9; t += dt) {
     const C = drugs.map((_, j) => conc(j, t));
     let total = N.reduce((a, b) => a + b, 0);
+    if (t <= m.startDay + 1e-9) startLoad = total;
+    if (!snap && t >= cpDay - 1e-9) snap = { day: cpDay, total, resist: ids.map((id, j) => total > 0 ? N.reduce((s, v, g) => s + (g >> j & 1 ? v : 0), 0) / total : 0) };
     // immune cells catch up once the load is low, mopping up stragglers
     const im = m.immune * (m.ramp ? Math.min(1, t / m.ramp) ** 2 : 1) + m.mop / (1 + total / 1e3);
     const grow = m.growth * (1 - total / CAP);
@@ -412,27 +510,30 @@ function simulateTx(rx, m) {
   }
   const final = N.reduce((a, b) => a + b, 0);
   const resistDominant = final > 0 && (final - N[0]) > N[0];
-  const side = txSide(rx, m), cost = txCost(rx, m);
+  const side = txSide(rx, m, change), cost = txCost(rx, m, change);
   const resisted = maxRGrowth > 10;
   const tooSick = side > m.maxSide;
   const success = hosp === null && final < m.cureBelow && !tooSick;
 
+  // notes judge the regimen in force at the end
+  const fin = rxDrugs(finalRx).map(id => ids.indexOf(id));
   const notes = [];
   drugs.forEach((dr, j) => { if (!works[j]) notes.push(`${dr.name} is ${dr.cls === 'Antibiotic' ? 'an antibiotic, and antibiotics do nothing to viruses' : 'an antiviral, and antivirals do nothing to bacteria'}. The patient got the side effects with none of the benefit.`); });
-  const gappy = drugs.filter((dr, j) => works[j] && !dr.single && Math.exp(-Math.LN2 * 24 / rx.freq / dr.hl) < .02 && rx.freq < 3);
+  const gappy = fin.filter(j => works[j] && !drugs[j].single && Math.exp(-Math.LN2 * 24 / finalRx.freq / drugs[j].hl) < .02 && finalRx.freq < 3).map(j => drugs[j]);
   if (hosp !== null) notes.push(`${resistDominant ? 'A resistant strain' : 'The infection'} overwhelmed the patient on day ${Math.floor(hosp)}, and they were hospitalized.`);
   const relapsed = !resistDominant && works.some(Boolean) && (hosp !== null ? hosp > lastDose + .5 : final >= m.cureBelow);
   if (relapsed) {
-    if (rx.dose === 'low') notes.push('The low dose only slowed the infection down. A standard dose would have finished it.');
+    if (finalRx.dose === 'low') notes.push('The low dose only slowed the infection down. A standard dose would have finished it.');
     else if (!gappy.length && m.adherence >= 1) notes.push(`Treatment stopped on day ${Math.ceil(lastDose)}, before every microbe was gone. The survivors bounced back, so a longer course would finish the job.`);
   } else if (hosp === null && final >= m.cureBelow && resistDominant) notes.push('A resistant strain survived treatment and took over.');
   if (resisted) {
-    if (n === 1 && works[0] && !pre[0]) notes.push('With only one drug, a single lucky mutation is enough to escape. Two drugs that work in different ways make that almost impossible.');
-    if (rx.dose === 'low') notes.push('Low doses kill the weak microbes and leave the tough ones to multiply. That\'s how resistance gets bred.');
+    if (fin.length === 1 && works[fin[0]] && !pre[fin[0]]) notes.push('With only one drug, a single lucky mutation is enough to escape. Two drugs that work in different ways make that almost impossible.');
+    if (finalRx.dose === 'low') notes.push("Low doses kill the weak microbes and leave the tough ones to multiply. That's how resistance gets bred.");
   }
-  gappy.forEach(dr => notes.push(`${dr.name} leaves the body within hours. With ${rx.freq === 1 ? 'one dose' : 'two doses'} a day, the microbes regrow between doses.`));
+  gappy.forEach(dr => notes.push(`${dr.name} leaves the body within hours. With ${finalRx.freq === 1 ? 'one dose' : 'two doses'} a day, the microbes regrow between doses.`));
   if (m.adherence < 1 && !success) notes.push('The patient missed many doses. Long-lasting drugs are more forgiving when doses are skipped.');
-  if (pre.some(p => p > 0) && drugs.some((dr, j) => pre[j] > 0 && n === 1)) notes.push(`Lab tests showed ${pct(pre.find(p => p > 0))} of these bacteria already resist ${drugs.find((d, j) => pre[j] > 0).name}.`);
+  const preHit = fin.find(j => pre[j] > 0);
+  if (preHit !== undefined && fin.length === 1) notes.push(`Lab tests showed ${pct(pre[preHit])} of these bacteria already resist ${drugs[preHit].name}.`);
   if (tooSick) notes.push(`Side effects were too harsh: ${pct(side)}, limit ${pct(m.maxSide)}. Try lower doses, a shorter course or a gentler drug.`);
   if (success) notes.unshift(`${m.pathogen} ${m.cureBelow > 1 ? 'is undetectable' : 'was cleared'}${cleared !== null ? ` by day ${Math.ceil(cleared)}` : ''}.`);
   const bonusClean = !resisted, bonusCheap = cost <= m.budget * .6;
@@ -441,8 +542,8 @@ function simulateTx(rx, m) {
   if (success && !bonusCheap) notes.push(`★ Bonus: spend $${Math.floor(m.budget * .6)}k or less.`);
 
   const at = T => { if (!hist.length) return { S: 0, R: 0, C: 0, total: 0 }; const i = Math.min(hist.length - 1, Math.max(0, Math.round(T / (dt * 5)))); return hist[i]; };
-  return { drugs, doses, works, hist, at, hosp, cleared, final, resisted, resistDominant, side, cost, success, stars, notes, lastDose,
-    end: hosp !== null ? hosp : m.days, halted: hosp !== null };
+  return { drugs, ids, doses, works, hist, at, hosp, cleared, final, resisted, resistDominant, side, cost, success, stars, notes, lastDose,
+    startLoad, snap, change, end: hosp !== null ? hosp : m.days, halted: hosp !== null };
 }
 // TX-MODEL-END
 
@@ -455,8 +556,10 @@ const isUnlocked = p => p.unlock === 0 || save.unlocked.includes(p.id) || !!miss
 
 // ---------- 3D setup ----------
 const canvas = document.getElementById('scene');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+// Without WebGL the game still runs; only the 3D view is missing.
+let renderer = null;
+try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true }); renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); }
+catch { document.getElementById('no3d').classList.remove('hidden'); }
 const scene = new THREE.Scene();
 const BG = new THREE.Color(0x0a0e19), FEVER_BG = new THREE.Color(0x3a0d16);
 scene.background = BG.clone();
@@ -473,7 +576,7 @@ const rim = new THREE.PointLight(0x4fd1ff, 60, 120); rim.position.set(-20, 10, -
 
 function resize() {
   const w = innerWidth, h = innerHeight;
-  renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+  renderer?.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
 }
 addEventListener('resize', resize); resize();
 
@@ -547,7 +650,7 @@ function updateLabels(show) {
 // Each pool keeps a fixed set of meshes and grows/shrinks the visible count toward a target.
 class Pool {
   constructor(max, make, init, step) {
-    this.items = []; this.init = init; this.step = step;
+    this.items = []; this.init = init; this.step = step; this.onKill = null;
     for (let i = 0; i < max; i++) {
       const mesh = make(i); mesh.visible = false; world.add(mesh);
       this.items.push({ mesh, i, active: false, s: 0, base: mesh.scale.x });
@@ -560,12 +663,13 @@ class Pool {
       if (active < n && !it.active && it.s < .05) { it.active = true; this.init(it); active++; }
     }
     for (let k = this.items.length - 1; k >= 0 && active > n; k--) {
-      const it = this.items[k]; if (it.active) { it.active = false; active--; }
+      const it = this.items[k];
+      if (it.active) { it.active = false; active--; if (this.onKill && it.mesh.visible) this.onKill(it); }
     }
   }
   update(dt, days, t) {
     for (const it of this.items) {
-      it.s += ((it.active ? 1 : 0) - it.s) * Math.min(1, dt * 5);
+      it.s += ((it.active ? 1 : 0) - it.s) * Math.min(1, dt * (it.active || !this.onKill ? 5 : 14));
       it.mesh.visible = it.s > .03;
       if (!it.mesh.visible) continue;
       it.mesh.scale.setScalar(it.s * it.base);
@@ -644,12 +748,77 @@ const siteStep = (it, dt, days, t) => {
 const rodGeo = new THREE.CapsuleGeometry(.4, 1.1, 4, 10);
 const bactS = new Pool(60, () => new THREE.Mesh(rodGeo, new THREE.MeshStandardMaterial({ color: 0x5be38f, emissive: 0x0f4020, roughness: .5 })), siteInit, siteStep);
 const resMat = new THREE.MeshStandardMaterial({ color: 0xff8c2a, emissive: 0xb03a00, emissiveIntensity: .7, roughness: .4 });
-const bactR = new Pool(60, () => new THREE.Mesh(rodGeo, resMat), siteInit, siteStep);
+// resistant microbes wear a glowing shield that drug molecules bounce off
+const shieldGeo = new THREE.SphereGeometry(1.25, 20, 14);
+const shieldMat = new THREE.MeshBasicMaterial({ color: 0xff8c2a, transparent: true, opacity: .11, blending: THREE.AdditiveBlending, depthWrite: false });
+const withShield = m => { const sh = new THREE.Mesh(shieldGeo, shieldMat); sh.scale.set(1, m.geometry === rodGeo ? 1.35 : 1, 1); m.add(sh); return m; };
+const bactR = new Pool(60, () => withShield(new THREE.Mesh(rodGeo, resMat)), siteInit, siteStep);
 const virR = new Pool(60, () => {
   const g = new THREE.Mesh(virusGeo, resMat);
   for (const n of fib(12)) { const s = new THREE.Mesh(spikeGeo, resMat); s.position.copy(n).multiplyScalar(.85); s.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), n); g.add(s); }
-  return g;
+  return withShield(g);
 }, siteInit, siteStep);
+
+// pops: a quick expanding flash where a microbe is destroyed
+const bursts = [...Array(40)].map(() => {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(.6, 16, 10), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
+  m.visible = false; world.add(m); return { m, life: 0 };
+});
+let burstIdx = 0;
+function burst(pos, color) {
+  const b = bursts[burstIdx++ % bursts.length];
+  b.m.position.copy(pos); b.m.material.color.setHex(color); b.life = 1; b.m.visible = true;
+}
+function updateBursts(dt) {
+  for (const b of bursts) {
+    if (b.life <= 0) continue;
+    b.life -= dt * 2.2;
+    b.m.scale.setScalar(.6 + (1 - b.life) * 3.2);
+    b.m.material.opacity = Math.max(0, b.life) * .8;
+    if (b.life <= 0) b.m.visible = false;
+  }
+}
+viruses.onKill = it => burst(it.mesh.position, 0xf4a3ff);
+bactS.onKill = it => burst(it.mesh.position, 0xb8ffd2);
+virR.onKill = bactR.onKill = it => burst(it.mesh.position, 0xffc078);
+
+// hunters: antibodies (vaccine) or drug molecules (treatment) that seek out microbes at the infection site
+const hunterMats = [0, 1].map(() => new THREE.MeshStandardMaterial({ color: 0x4fd1ff, emissive: 0x4fd1ff, emissiveIntensity: .8 }));
+const hunterGeo = new THREE.TetrahedronGeometry(.32);
+const huntCtx = { prey: [], armored: [] }; // pools to chase, pools that repel
+function setHunterColors(hexes) { hunterMats.forEach((mat, i) => { const h = hexes[i % hexes.length]; mat.color.setHex(h); mat.emissive.setHex(h); }); }
+function pickPrey(it) {
+  const list = [];
+  for (const p of huntCtx.prey) for (const x of p.items) if (x.active) list.push(x);
+  // a few hunters try the shielded ones and get bounced
+  if (Math.random() < .3) for (const p of huntCtx.armored) for (const x of p.items) if (x.active) list.push(x);
+  it.target = list.length ? list[Math.floor(Math.random() * list.length)] : null;
+  it.armored = !!it.target && huntCtx.armored.some(p => p.items.includes(it.target));
+}
+const hunters = new Pool(50, i => new THREE.Mesh(hunterGeo, hunterMats[i % 2]),
+  it => { it.mesh.position.copy(curve.getPointAt(.45)).add(randIn(2)); it.vel = new THREE.Vector3(); it.cool = 0; it.stuck = randIn(1).normalize(); pickPrey(it); },
+  (it, dt, days, t) => {
+    it.mesh.rotation.x += dt * 3; it.mesh.rotation.y += dt * 2;
+    it.cool -= dt;
+    if (it.cool > 0) { it.mesh.position.addScaledVector(it.vel, dt); it.vel.multiplyScalar(.92); return; }
+    if (!it.target || !it.target.active) { pickPrey(it); if (!it.target) {
+      // nothing to hit: drift aimlessly around the site
+      it.mesh.position.lerp(SITE.clone().add(new THREE.Vector3(Math.sin(t * .7 + it.i) * 7, Math.cos(t * .5 + it.i * 2) * 5, Math.cos(t * .6 + it.i) * 7)), dt * .8);
+      return;
+    } }
+    const goal = it.target.mesh.position.clone().addScaledVector(it.stuck, it.armored ? 1.7 : .9);
+    it.mesh.position.lerp(goal, Math.min(1, dt * (it.armored ? 3 : 4)));
+    if (it.armored && it.mesh.position.distanceTo(goal) < .5) {
+      // bounced off the shield
+      it.vel.copy(it.stuck).multiplyScalar(9); it.cool = .6; it.target = null;
+    }
+  });
+function updateBattle(dt, days, t, count, prey, armored) {
+  huntCtx.prey = prey; huntCtx.armored = armored;
+  hunters.setTarget(count);
+  hunters.update(dt, days, t);
+  updateBursts(dt);
+}
 
 // drug molecules in the bloodstream, colored per drug
 const DRUG_MAX = 900;
@@ -884,7 +1053,7 @@ function renderMenu() {
   for (const b of document.querySelectorAll('.mission')) b.onclick = () => openLab(list[+b.dataset.i]);
 }
 function goMenu() {
-  trial.active = false; resetWorld();
+  trial.active = false; resetWorld(); siteMat.opacity = .35;
   show('menu'); renderMenu();
   controls.autoRotate = true; controls.autoRotateSpeed = .4;
   camTo(new THREE.Vector3(0, 30, 62), new THREE.Vector3(0, 0, 0));
@@ -1121,10 +1290,22 @@ function renderBrief() {
 
 // ---------- trial ----------
 function resetWorld() {
-  dcs.clear(); bcells.clear(); tcells.clear(); viruses.clear(); bactS.clear(); bactR.clear(); virR.clear(); clearShots();
+  dcs.clear(); bcells.clear(); tcells.clear(); viruses.clear(); bactS.clear(); bactR.clear(); virR.clear(); hunters.clear(); clearShots();
+  for (const b of bursts) { b.life = 0; b.m.visible = false; }
   abGeo.setDrawRange(0, 0); drugGeo.setDrawRange(0, 0); scene.background.copy(BG); syringe.userData.push = 0;
 }
 const VAX_LEGEND = [['#4fd1ff', 'Antibodies'], ['#ffa94d', 'T cells'], ['#ff5d6c', 'Side effects'], ['#e05cff', 'Virus']];
+const CAMS = {
+  overview: { pos: new THREE.Vector3(-6, 32, 52), target: new THREE.Vector3(0, 0, 0), label: '🔍 Close-up' },
+  closeup: { pos: SITE.clone().add(new THREE.Vector3(-9, 8, 17)), target: SITE.clone().add(new THREE.Vector3(-2, 0, 0)), label: '🌐 Overview' },
+};
+function setCam(view, manual) {
+  if (manual) trial.autoCam = false;
+  if (trial.view === view) return;
+  trial.view = view; camTo(CAMS[view].pos.clone(), CAMS[view].target.clone());
+  siteMat.opacity = view === 'closeup' ? .1 : .35; // fade the tissue so the fight shows up close
+  $('cam').textContent = CAMS[view].label;
+}
 function setupTrialHud(sim, title, legend) {
   $('log-items').innerHTML = '';
   $('vitals-title').textContent = title;
@@ -1134,20 +1315,35 @@ function setupTrialHud(sim, title, legend) {
   trial.warp = 1;
   for (const b of $('warp').querySelectorAll('button')) b.onclick = () => { trial.warp = +b.dataset.w; for (const x of $('warp').children) x.classList.toggle('on', x === b); };
   $('skip').onclick = () => { trial.warp = 40; };
+  $('cam').onclick = () => setCam(trial.view === 'closeup' ? 'overview' : 'closeup', true);
+  Object.assign(trial, { view: null, autoCam: true, paused: false, checkpointDone: false, baseSim: null, changeNote: null });
   show('trial');
-  camTo(new THREE.Vector3(-6, 32, 52), new THREE.Vector3(0, 0, 0));
+  setCam('overview');
 }
 function log(day, text, cls = '') {
   const p = document.createElement('p'); p.className = cls; p.innerHTML = `<b>D${Math.floor(day)}</b>${text}`;
   $('log-items').prepend(p);
 }
-function startTrial() {
-  const m = mission, sim = simulate(design, m);
-  Object.assign(trial, { active: true, tx: false, t: 0, sim, mission: m, hist: [], lastSample: -1, done: false, design: { ...design } });
-  resetWorld();
-  const c = part('carrier', design.carrier);
-  const ev = [];
-  sim.doseDays.forEach((d, k) => ev.push({ day: d + .01, fn: () => { injectBurst(sim, c); log(d, k === 0 ? `First dose given to 1,000 volunteers via ${design.route === 'nasal' ? 'nasal spray' : 'injection'}.` : `Booster dose ${k + 1} given.`); } }));
+function simDays(dt) {
+  if (trial.done) return dt * .4;
+  if (trial.paused) return 0;
+  return dt * (trial.tx ? TX_DPS : BASE_DPS) * trial.warp;
+}
+// What changed mid-trial, judged against the plan the player started with.
+function changeVerdict(s) {
+  const b = trial.baseSim; if (!b) return null;
+  const what = trial.tx ? 'plan' : 'schedule';
+  if (s.success && !b.success) return `Good call on day ${Math.floor(trial.changeDay)}: the original ${what} would have failed.`;
+  if (s.success && b.success) return `The original ${what} would have worked too, so the change cost you more without changing the outcome.`;
+  if (!s.success && b.success) return `The original ${what} would have worked. The change made things worse.`;
+  return `The original ${what} would have failed too. A bigger change, or the right plan from day one, was needed.`;
+}
+
+// ---------- vaccine trial ----------
+const VAX_CHECKPOINT = 10;
+function vaxEvents(sim, m, d, after) {
+  const c = part('carrier', d.carrier), ev = [];
+  sim.doseDays.forEach((day, k) => ev.push({ day: day + .01, fn: () => { injectBurst(sim, c); log(day, k === 0 ? `First dose given to 1,000 volunteers via ${d.route === 'nasal' ? 'nasal spray' : 'injection'}.` : `Booster dose ${k + 1} given.`); } }));
   if (sim.spoil > .2) ev.push({ day: .3, fn: () => log(.3, `${pct(sim.spoil)} of the doses spoiled in transit without refrigeration.`, 'warn') });
   ev.push({ day: 1, fn: () => {
     if (sim.halted) log(1, 'Severe reactions reported: high fevers across the trial group.', 'bad');
@@ -1160,26 +1356,113 @@ function startTrial() {
     ev.push({ day: 3, fn: () => log(3, 'Dendritic cells are carrying antigen to the lymph node.') });
     ev.push({ day: 9, fn: () => log(9, sim.abBase > .3 ? 'B cells and T cells are multiplying in the lymph node.' : 'Only a faint response in the lymph node so far.', sim.abBase > .3 ? '' : 'warn') });
     if (sim.escape > .15) ev.push({ day: 16, fn: () => log(16, 'Antibodies are binding poorly to the drifted strain.', 'warn') });
-    ev.push({ day: m.challengeDay, fn: () => log(m.challengeDay, `Volunteers exposed to ${m.pathogen}.`, 'bad') });
-    ev.push({ day: m.challengeDay + 4, fn: () => log(m.challengeDay + 4, sim.success ? 'Antibodies are neutralizing the virus. Most volunteers feel fine.' : 'The virus is spreading. Many volunteers are getting sick.', sim.success ? 'good' : 'bad') });
+    ev.push({ day: m.challengeDay, fn: () => log(m.challengeDay, `Volunteers exposed to ${m.pathogen}. Watch the antibodies go to work.`, 'bad') });
+    ev.push({ day: m.challengeDay + 4, fn: () => log(m.challengeDay + 4, sim.success ? 'Antibodies are neutralizing the invaders. Most volunteers feel fine.' : 'Too few antibodies: the infection is spreading and many volunteers are sick.', sim.success ? 'good' : 'bad') });
   }
-  trial.events = ev.sort((a, b) => a.day - b.day);
+  return ev.filter(e => e.day > after).sort((a, b) => a.day - b.day);
+}
+function startTrial() {
+  const m = mission, sim = simulate(design, m);
+  Object.assign(trial, { active: true, tx: false, t: 0, sim, mission: m, hist: [], lastSample: -1, done: false, design: { ...design } });
+  resetWorld();
+  setHunterColors([0x4fd1ff]);
+  trial.events = vaxEvents(sim, m, design, -1);
   setupTrialHud(sim, 'Volunteer vitals', VAX_LEGEND);
+}
+function vaxCheckpoint() {
+  const s = trial.sim, m = trial.mission, d = trial.design;
+  const next = { ...d, doses: d.doses + 1 };
+  const side = reactoOf(next) * m.frailty, cost = designCost(next);
+  const blocked = side > m.maxSide ? `Safety limit: side effects would reach ${pct(side)} (limit ${pct(m.maxSide)}).`
+    : !m.sandbox && cost > m.budget ? `Over budget: $${cost}k of $${m.budget}k.` : '';
+  const ab = s.ab(VAX_CHECKPOINT), tc = s.tc(VAX_CHECKPOINT);
+  const level = v => v < .25 ? 'Low' : v < .5 ? 'Moderate' : 'High';
+  openCheckpoint(`
+    <div class="cp-kicker">Day ${VAX_CHECKPOINT} · bloodwork is back</div>
+    <h2>Mid-trial checkpoint</h2>
+    <div class="cp-grid">
+      <div><small>Antibodies</small><b>${level(ab)}</b>${bar(ab / .9, 'var(--accent)')}</div>
+      <div><small>T cells</small><b>${level(tc)}</b>${bar(tc / .8, '#ffa94d')}</div>
+      <div><small>Exposure</small><b>Day ${m.challengeDay}</b><em>${m.challengeDay - VAX_CHECKPOINT} days to go</em></div>
+    </div>
+    <p class="cp-note">Antibodies peak about two weeks after a dose, then fade. They have to stay strong enough until exposure on day ${m.challengeDay}.</p>
+    <div class="cp-choices">
+      <button class="cp-choice" id="cp-keep"><b>Keep the schedule</b><small>${d.doses} dose${d.doses > 1 ? 's' : ''} total</small></button>
+      <button class="cp-choice" id="cp-boost" ${blocked ? 'disabled' : ''}><b>Add a booster dose</b><small>${blocked || `Dose ${next.doses} on day ${(next.doses - 1) * DOSE_GAP} · side effects ${pct(side)} · cost $${cost}k`}</small></button>
+    </div>`);
+  $('cp-keep').onclick = () => closeCheckpoint();
+  $('cp-boost').onclick = () => {
+    trial.baseSim = s; trial.changeDay = VAX_CHECKPOINT;
+    trial.design = next; trial.sim = simulate(next, m);
+    trial.events = vaxEvents(trial.sim, m, next, trial.t);
+    log(trial.t, `Booster added: dose ${next.doses} scheduled for day ${(next.doses - 1) * DOSE_GAP}.`, 'good');
+    closeCheckpoint();
+  };
+}
+function updateTrial(dt, t) {
+  const s = trial.sim, m = trial.mission;
+  const days = simDays(dt);
+  if (!trial.done && !trial.paused) trial.t = Math.min(s.end, trial.t + days);
+  const T = trial.t;
+  while (trial.events.length && trial.events[0].day <= T) trial.events.shift().fn();
+  if (!trial.checkpointDone && !s.halted && T >= VAX_CHECKPOINT) {
+    trial.checkpointDone = true;
+    if (trial.design.doses < 3) vaxCheckpoint();
+  }
+  if (trial.autoCam && !s.halted && T >= m.challengeDay - 1) setCam('closeup');
+
+  const ab = s.ab(T), tc = s.tc(T), ag = s.antigen(T), fever = s.fever(T), v = s.virus(T);
+  const bugPool = m.bug === 'bacteria' ? bactS : viruses;
+  dcs.setTarget(Math.min(1, ag + (T > 1 && T < 30 ? ab * .3 : 0)) * 14);
+  bcells.setTarget(Math.sqrt(clamp(ab / .9, 0, 1)) * 40);
+  tcells.setTarget(Math.sqrt(clamp(tc / .8, 0, 1)) * 30);
+  bugPool.setTarget(v * 60);
+  for (const p of [dcs, bcells, tcells, viruses, bactS]) p.update(dt, days, t);
+  // after exposure, antibodies leave the bloodstream to hunt the invaders
+  const fighting = T >= m.challengeDay && !s.halted;
+  updateBattle(dt, days, t, fighting ? Math.max(ab > .03 ? 6 : 0, clamp(ab / .9, 0, 1) * 50) : 0, [bugPool], []);
+  updateAntibodies(dt, ab / .9);
+  updateShots(dt, days);
+  scene.background.copy(BG).lerp(FEVER_BG, clamp(fever * 1.1 + v * .4, 0, .85));
+
+  $('day').textContent = Math.floor(T);
+  $('temp').textContent = (37 + fever * 3.2 + v * 2).toFixed(1) + '°C';
+  $('temp').style.color = fever + v > .5 ? 'var(--bad)' : fever + v > .25 ? 'var(--warn)' : 'var(--text)';
+  if (T - trial.lastSample >= .25 || T === s.end) { trial.hist.push({ T, ab, tc, fever, v }); trial.lastSample = T; drawChart(); }
+
+  if (!trial.done && T >= s.end) { trial.done = true; setTimeout(showResult, 900); }
+}
+function drawChart() {
+  const cv = $('chart'), g = cv.getContext('2d'), W = cv.width, H = cv.height, s = trial.sim, m = trial.mission;
+  g.clearRect(0, 0, W, H);
+  g.strokeStyle = '#ffffff14'; g.lineWidth = 1;
+  for (let k = 1; k < 4; k++) { g.beginPath(); g.moveTo(0, H * k / 4); g.lineTo(W, H * k / 4); g.stroke(); }
+  const X = T => T / s.end * W;
+  if (!s.halted) { g.strokeStyle = '#e05cff66'; g.setLineDash([6, 6]); g.beginPath(); g.moveTo(X(m.challengeDay), 0); g.lineTo(X(m.challengeDay), H); g.stroke(); g.setLineDash([]); }
+  const top = Math.max(1, ...trial.hist.map(h => Math.max(h.ab, h.tc)));
+  const line = (key, color, scale = top) => {
+    g.strokeStyle = color; g.lineWidth = 3; g.beginPath();
+    trial.hist.forEach((h, i) => { const y = H - 6 - (h[key] / scale) * (H - 12); i ? g.lineTo(X(h.T), y) : g.moveTo(X(h.T), y); });
+    g.stroke();
+  };
+  line('fever', '#ff5d6c', 1); line('v', '#e05cff', 1); line('tc', '#ffa94d'); line('ab', '#4fd1ff');
 }
 
 // ---------- treatment trial ----------
 const TX_DPS = 1.6; // simulated days per real second at 1x
 const logLevel = N => clamp((Math.log10(Math.max(1, N)) - 2) / 8, 0, 1);
+const rxText = r => {
+  const ds = rxDrugs(r).map(DRUG);
+  return ds.length === 1 && ds[0].single ? `one infusion of ${ds[0].name}`
+    : `${ds.map(d => d.name).join(' + ')}, ${DOSE_LV[r.dose].name.toLowerCase()} dose, ${r.freq}× a day for ${r.dur} days`;
+};
 function startTxTrial() {
   const m = mission, sim = simulateTx(rx, m);
   Object.assign(trial, { active: true, tx: true, t: 0, sim, mission: m, hist: [], lastSample: -1, done: false, flags: {},
     doseQ: sim.doses.flat().sort((a, b) => a - b), rx: { ...rx } });
   resetWorld();
-  setDrugColors(sim.drugs.map(d => d.color));
-  const names = sim.drugs.map(d => d.name).join(' + ');
-  const ev = [{ day: m.startDay, fn: () => log(m.startDay, sim.drugs.some(d => d.single) && sim.drugs.length === 1
-    ? `Treatment starts: one infusion of ${names}.`
-    : `Treatment starts: ${names}, ${DOSE_LV[rx.dose].name.toLowerCase()} dose, ${rx.freq}× a day for ${rx.dur} days.`) }];
+  setDrugColors(sim.drugs.map(d => d.color)); setHunterColors(sim.drugs.map(d => d.color));
+  const ev = [{ day: m.startDay, fn: () => log(m.startDay, `Treatment starts: ${rxText(rx)}.`) }];
   sim.drugs.forEach((d, j) => { if (!sim.works[j]) ev.push({ day: m.startDay + 1.5, fn: () => log(m.startDay + 1.5, `${d.name} doesn't seem to be doing anything...`, 'warn') }); });
   if (m.adherence < 1) ev.push({ day: m.startDay + 2, fn: () => log(m.startDay + 2, 'Pill count is low: the patient has been skipping doses.', 'warn') });
   trial.events = ev.sort((a, b) => a.day - b.day);
@@ -1198,23 +1481,89 @@ function txEvents(h) {
   if (!f.clear && T > m.startDay && h.total < m.cureBelow) { f.clear = true; log(T, m.cureBelow > 1 ? `${m.pathogen} is now undetectable.` : `No ${m.pathogen} detected. The infection is gone.`, 'good'); }
   if (!f.hosp && s.hosp !== null && T >= s.hosp) { f.hosp = true; log(T, 'PATIENT HOSPITALIZED.', 'bad'); }
 }
+function txCheckpoint() {
+  const s = trial.sim, m = trial.mission, snap = s.snap, day = snap.day;
+  const elapsed = day - m.startDay;
+  const ratio = snap.total / Math.max(1, s.startLoad);
+  const trend = ratio < 1 ? `down ${ratio < .001 ? '99.9' : Math.round((1 - ratio) * 100)}%` : `up ${ratio < 10 ? ratio.toFixed(1) : Math.round(ratio)}×`;
+  const sev = clamp((Math.log10(Math.max(1, snap.total)) - 6) / (Math.log10(m.critical) - 6), 0, 1);
+  const tests = s.ids.map((id, j) => `<div><small>Resist ${DRUG(id).name}</small><b class="${snap.resist[j] > .2 ? 'no' : 'ok'}">${pct(snap.resist[j])}</b></div>`).join('');
+  const plan = { ...trial.rx };
+  const durs = [...new Set([...m.durations.filter(d => d > elapsed), plan.dur])].sort((a, b) => a - b);
+  const opts = (list, cur) => list.map(([v, l]) => `<option value="${v}" ${String(v) === String(cur) ? 'selected' : ''}>${l}</option>`).join('');
+  const drugOpts = DRUGS.filter(isUnlocked).map(d => [d.id, `${d.name} (${d.cls.toLowerCase()})`]);
+  openCheckpoint(`
+    <div class="cp-kicker">Day ${day} · lab results are back</div>
+    <h2>Mid-course checkpoint</h2>
+    <div class="cp-grid">
+      <div><small>Infection load</small><b class="${ratio < 1 ? 'ok' : 'no'}">${trend}</b><em>since treatment began</em></div>
+      ${tests}
+      <div><small>Patient</small><b class="${sev > .6 ? 'no' : sev > .3 ? '' : 'ok'}">${sev > .6 ? 'Very sick' : sev > .3 ? 'Sick' : 'Stable'}</b></div>
+    </div>
+    <p class="cp-note">Now on: ${rxText(plan)}. Keep going, or adjust the plan from today. Doses already given still count.</p>
+    <div class="cp-form">
+      <label>Drug<select id="cp-a">${opts(drugOpts, plan.a)}</select></label>
+      <label>Second drug<select id="cp-b">${opts([['', 'None'], ...drugOpts], plan.b || '')}</select></label>
+      <label>Dose<select id="cp-dose">${opts([['low', 'Low'], ['std', 'Standard'], ['high', 'High']], plan.dose)}</select></label>
+      <label>Per day<select id="cp-freq">${opts([[1, '1×'], [2, '2×'], [3, '3×']], plan.freq)}</select></label>
+      <label>Course<select id="cp-dur">${opts(durs.map(d => [d, `${d} days`]), plan.dur)}</select></label>
+    </div>
+    <div class="cp-preview" id="cp-preview"></div>
+    <div class="btns"><button class="ghost" id="cp-keep">Keep the plan</button><button class="primary" id="cp-apply">Change the plan ▶</button></div>`);
+  const read = () => {
+    const r = { a: $('cp-a').value, b: $('cp-b').value || null, dose: $('cp-dose').value, freq: +$('cp-freq').value, dur: +$('cp-dur').value };
+    if (r.b === r.a) r.b = null;
+    return r;
+  };
+  const refresh = () => {
+    const r = read(), change = { day, rx: r };
+    const cost = txCost(trial.rx, m, change), side = txSide(trial.rx, m, change);
+    const same = JSON.stringify(r) === JSON.stringify({ ...trial.rx, b: trial.rx.b || null });
+    const over = !m.sandbox && cost > m.budget, harsh = side > m.maxSide;
+    $('cp-preview').innerHTML = `Total cost <b class="${over ? 'no' : ''}">$${Math.round(cost)}k</b>${m.sandbox ? '' : ` of $${m.budget}k`} · side effects <b class="${harsh ? 'no' : ''}">${pct(side)}</b> of ${pct(m.maxSide)} limit`;
+    $('cp-apply').disabled = same || over;
+  };
+  for (const id of ['cp-a', 'cp-b', 'cp-dose', 'cp-freq', 'cp-dur']) $(id).onchange = refresh;
+  refresh();
+  $('cp-keep').onclick = () => closeCheckpoint();
+  $('cp-apply').onclick = () => {
+    const r = read();
+    trial.baseSim = s; trial.changeDay = day;
+    trial.sim = simulateTx(trial.rx, m, { day, rx: r });
+    trial.doseQ = trial.sim.doses.flat().filter(x => x > trial.t).sort((a, b) => a - b);
+    setDrugColors(rxDrugs(r).map(id => DRUG(id).color)); setHunterColors(rxDrugs(r).map(id => DRUG(id).color));
+    $('day-end').textContent = Math.round(trial.sim.end);
+    log(day, `Plan changed: ${rxText(r)}.`, 'good');
+    trial.flags.last = false;
+    closeCheckpoint();
+  };
+}
 function updateTxTrial(dt, t) {
   const s = trial.sim, m = trial.mission;
-  const days = trial.done ? dt * .4 : dt * TX_DPS * trial.warp;
-  if (!trial.done) trial.t = Math.min(s.end, trial.t + days);
+  const days = simDays(dt);
+  if (!trial.done && !trial.paused) trial.t = Math.min(s.end, trial.t + days);
   const T = trial.t;
   while (trial.events.length && trial.events[0].day <= T) trial.events.shift().fn();
   while (trial.doseQ.length && trial.doseQ[0] <= T) { trial.doseQ.shift(); syringe.userData.push = 1; }
   const h = s.at(T);
   txEvents(h);
+  if (!trial.checkpointDone && s.snap && T >= s.snap.day) {
+    trial.checkpointDone = true;
+    if ((s.hosp === null || s.hosp > s.snap.day) && s.snap.total >= m.cureBelow) txCheckpoint();
+  }
+  if (trial.autoCam && T >= m.startDay) setCam('closeup');
 
   const bact = m.kind === 'bacteria';
   const count = N => N >= 100 ? Math.max(1, logLevel(N) * 60) : 0;
-  (bact ? bactS : viruses).setTarget(count(h.S)); (bact ? bactR : virR).setTarget(count(h.R));
+  const sPool = bact ? bactS : viruses, rPool = bact ? bactR : virR;
+  sPool.setTarget(count(h.S)); rPool.setTarget(count(h.R));
   (bact ? viruses : bactS).setTarget(0); (bact ? virR : bactR).setTarget(0);
   const load = logLevel(h.total);
   dcs.setTarget(load * 6); bcells.setTarget(10 + load * 14); tcells.setTarget(6 + load * 10);
   for (const p of [dcs, bcells, tcells, viruses, virR, bactS, bactR]) p.update(dt, days, t);
+  // drug molecules chase the microbes they can kill; a drug aimed at the wrong kind of bug just drifts
+  const works = s.works.some(Boolean);
+  updateBattle(dt, days, t, clamp(h.C / 1.6, 0, 1) * 50, works ? [sPool] : [], works ? [rPool] : []);
   updateDrugs(dt, h.C / 1.6);
   updateAntibodies(dt, 0);
 
@@ -1245,44 +1594,28 @@ function drawTxChart() {
   line(h => Y(h.S), m.kind === 'virus' ? '#e05cff' : '#5be38f');
   line(h => Y(h.R), '#ff8c2a');
 }
-function updateTrial(dt, t) {
-  const s = trial.sim, m = trial.mission;
-  const days = trial.done ? dt * .4 : dt * BASE_DPS * trial.warp;
-  if (!trial.done) trial.t = Math.min(s.end, trial.t + days);
-  const T = trial.t;
-  while (trial.events.length && trial.events[0].day <= T) trial.events.shift().fn();
 
-  const ab = s.ab(T), tc = s.tc(T), ag = s.antigen(T), fever = s.fever(T), v = s.virus(T);
-  dcs.setTarget(Math.min(1, ag + (T > 1 && T < 30 ? ab * .3 : 0)) * 14);
-  bcells.setTarget(Math.sqrt(clamp(ab / .9, 0, 1)) * 40);
-  tcells.setTarget(Math.sqrt(clamp(tc / .8, 0, 1)) * 30);
-  (m.bug === 'bacteria' ? bactS : viruses).setTarget(v * 60);
-  for (const p of [dcs, bcells, tcells, viruses, bactS]) p.update(dt, days, t);
-  updateAntibodies(dt, ab / .9);
-  updateShots(dt, days);
-  scene.background.copy(BG).lerp(FEVER_BG, clamp(fever * 1.1 + v * .4, 0, .85));
-
-  $('day').textContent = Math.floor(T);
-  $('temp').textContent = (37 + fever * 3.2 + v * 2).toFixed(1) + '°C';
-  $('temp').style.color = fever + v > .5 ? 'var(--bad)' : fever + v > .25 ? 'var(--warn)' : 'var(--text)';
-  if (T - trial.lastSample >= .25 || T === s.end) { trial.hist.push({ T, ab, tc, fever, v }); trial.lastSample = T; drawChart(); }
-
-  if (!trial.done && T >= s.end) { trial.done = true; setTimeout(showResult, 900); }
+// ---------- checkpoint modal ----------
+function bar(frac, color) { return `<div class="bar"><i style="width:${clamp(frac, 0, 1) * 100}%;background:${color}"></i></div>`; }
+function openCheckpoint(html) {
+  trial.paused = true;
+  $('cp-body').innerHTML = html;
+  $('checkpoint').classList.remove('hidden');
 }
-function drawChart() {
-  const cv = $('chart'), g = cv.getContext('2d'), W = cv.width, H = cv.height, s = trial.sim, m = trial.mission;
-  g.clearRect(0, 0, W, H);
-  g.strokeStyle = '#ffffff14'; g.lineWidth = 1;
-  for (let k = 1; k < 4; k++) { g.beginPath(); g.moveTo(0, H * k / 4); g.lineTo(W, H * k / 4); g.stroke(); }
-  const X = T => T / s.end * W;
-  if (!s.halted) { g.strokeStyle = '#e05cff66'; g.setLineDash([6, 6]); g.beginPath(); g.moveTo(X(m.challengeDay), 0); g.lineTo(X(m.challengeDay), H); g.stroke(); g.setLineDash([]); }
-  const top = Math.max(1, ...trial.hist.map(h => Math.max(h.ab, h.tc)));
-  const line = (key, color, scale = top) => {
-    g.strokeStyle = color; g.lineWidth = 3; g.beginPath();
-    trial.hist.forEach((h, i) => { const y = H - 6 - (h[key] / scale) * (H - 12); i ? g.lineTo(X(h.T), y) : g.moveTo(X(h.T), y); });
-    g.stroke();
-  };
-  line('fever', '#ff5d6c', 1); line('v', '#e05cff', 1); line('tc', '#ffa94d'); line('ab', '#4fd1ff');
+function closeCheckpoint() {
+  $('checkpoint').classList.add('hidden');
+  trial.paused = false;
+}
+
+// ---------- results ----------
+function breakdownHtml(s) {
+  const weakest = s.breakdown.slice().sort((a, b) => a.value - b.value)[0];
+  const rows = s.breakdown.map(b => {
+    const color = b.value < .5 ? 'var(--bad)' : b.value < .75 ? 'var(--warn)' : 'var(--good)';
+    return `<div class="bd-row ${b === weakest ? 'weak' : ''}"><div><b>${b.label}</b><small>${b.why}</small></div>${bar(b.value, color)}<span>${b.show}</span></div>`;
+  }).join('');
+  return `<h3 class="sub">What drove your result</h3><div class="bd">${rows}</div>
+    ${s.clue ? `<div class="clue"><b>Clue for next time</b>${s.clue}</div>` : ''}`;
 }
 function showResult() {
   const s = trial.sim, m = trial.mission;
@@ -1294,8 +1627,12 @@ function showResult() {
     save.science += earned; save.missions[m.id] = rec; persist();
     $('sci').textContent = save.science;
   }
-  const notes = m.sandbox ? s.notes.filter(n => !n.startsWith('★')) : s.notes;
   const tx = !!m.kind;
+  let notes = m.sandbox ? s.notes.filter(n => !n.startsWith('★')) : s.notes.slice();
+  // for vaccines the breakdown explains the causes, so keep only the headline and bonus goals
+  if (!tx && !s.halted) notes = notes.filter((n, i) => i === notes.length - 1 && !s.success || n.startsWith('★') || s.success && i === 0);
+  const verdict = changeVerdict(s);
+  if (verdict) notes.push(verdict);
   const title = s.success ? (tx ? 'Patient cured!' : 'Trial successful!')
     : s.halted ? (tx ? 'Patient hospitalized' : 'Trial halted') : (tx ? 'Treatment failed' : 'Trial failed');
   const outcome = tx
@@ -1310,8 +1647,9 @@ function showResult() {
       <div><small>Side effects</small><b class="${s.side <= m.maxSide ? 'ok' : 'no'}">${pct(s.side)}</b> <em>max ${pct(m.maxSide)}</em></div>
       <div><small>Cost</small><b>$${Math.round(s.cost)}k</b> <em>${m.sandbox ? 'sandbox' : `of $${m.budget}k`}</em></div>
     </div>
-    <h3 style="margin:0 0 8px;font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)">Debrief</h3>
+    <h3 class="sub">Debrief</h3>
     <ul class="notes">${notes.map(n => `<li>${n}</li>`).join('')}</ul>
+    ${!tx && !s.halted ? breakdownHtml(s) : ''}
     ${m.sandbox ? '' : `<p style="color:var(--sci);margin:0 0 16px">+${earned} ⚗ science${s.success ? '' : ' (failures are data too)'}</p>`}
     <div class="btns"><button class="ghost" id="r-lab">↺ Back to the lab</button><button class="primary" id="r-menu">${m.sandbox ? '🧪 Edit pathogen' : 'Mission Control'}</button></div>`;
   $('result').classList.remove('hidden');
@@ -1331,6 +1669,7 @@ function updateIdle(dt, t) {
   for (const p of [dcs, bcells, tcells, viruses, virR, bactS, bactR]) p.update(dt, p === dcs ? dt * .5 : dt, t);
   updateAntibodies(dt, .25);
   updateDrugs(dt, 0);
+  updateBattle(dt, dt, t, 0, [], []);
 }
 
 // ---------- loop ----------
@@ -1354,7 +1693,7 @@ function frame() {
   syringe.position.y = 14 - Math.sin((1 - (syringe.userData.push || 0)) * Math.PI) * (push > 0 ? 4 : 0);
   nodeWire.rotation.y += dt * .05;
   controls.update();
-  renderer.render(scene, camera);
+  renderer?.render(scene, camera);
   updateLabels(mode !== 'lab');
 }
 camera.position.set(0, 30, 62);

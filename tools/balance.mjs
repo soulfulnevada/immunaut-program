@@ -6,7 +6,7 @@ import fs from 'fs';
 const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const between = (a, b) => html.slice(html.indexOf(a), html.indexOf(b));
 const src = between('// MODEL-START', '// MODEL-END') + between('// TX-MODEL-START', '// TX-MODEL-END');
-const M = new Function(src + 'return { PARTS, MISSIONS, simulate, DRUGS, TX_MISSIONS, simulateTx };')();
+const M = new Function(src + 'return { PARTS, MISSIONS, simulate, DRUGS, TX_MISSIONS, simulateTx, txCheckpointDay };')();
 
 const starter = list => list.filter(p => p.unlock === 0).map(p => p.id);
 const every = list => list.map(p => p.id);
@@ -64,5 +64,22 @@ for (const [id, rx, want, lesson] of LESSONS) {
   const s = M.simulateTx({ b: null, ...rx }, M.TX_MISSIONS.find(m => m.id === id));
   const ok = s.success === want; if (!ok) broken++;
   console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${id} ${lesson}`);
+}
+// Mid-course checkpoint: keeping the plan must match no checkpoint at all, and these rescues must hold.
+const CHANGES = [
+  ['t1', { a: 'pen', dose: 'std', freq: 3, dur: 3 }, { a: 'pen', dose: 'std', freq: 3, dur: 10 }, true, 'extending a short course saves it'],
+  ['t2', { a: 'pen', dose: 'std', freq: 3, dur: 7 }, { a: 'polym', dose: 'std', freq: 2, dur: 5 }, true, 'switching to an antiviral saves the flu patient'],
+  ['t3', { a: 'pen', dose: 'std', freq: 3, dur: 10 }, { a: 'tetra', dose: 'std', freq: 1, dur: 10 }, true, 'switching off a resisted drug saves it'],
+  ['t4', { a: 'polym', dose: 'std', freq: 2, dur: 45 }, { a: 'polym', b: 'prot', dose: 'std', freq: 2, dur: 45 }, false, 'adding one drug after resistance took over is too late'],
+  ['t5', { a: 'pen', dose: 'std', freq: 3, dur: 10 }, { a: 'tetra', dose: 'std', freq: 1, dur: 10 }, true, 'switching to a long-lasting drug saves it'],
+];
+console.log('\nCHECKPOINT CHECKS');
+for (const [id, rx0, fix0, want, lesson] of CHANGES) {
+  const m = M.TX_MISSIONS.find(x => x.id === id), day = M.txCheckpointDay(m);
+  const rx = { b: null, ...rx0 }, fix = { b: null, ...fix0 };
+  const plain = M.simulateTx(rx, m), kept = M.simulateTx(rx, m, { day, rx }), changed = M.simulateTx(rx, m, { day, rx: fix });
+  const same = plain.success === kept.success && plain.final === kept.final && Math.abs(plain.cost - kept.cost) < 1e-9 && Math.abs(plain.side - kept.side) < 1e-9;
+  const ok = same && changed.success === want; if (!ok) broken++;
+  console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${id} ${lesson}${same ? '' : ' (keep-plan drifted)'}`);
 }
 process.exitCode = broken ? 1 : 0;

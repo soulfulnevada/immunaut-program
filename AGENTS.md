@@ -16,6 +16,8 @@ For current status, the Netlify deploy, and the idea backlog, read [`HANDOFF.md`
 - After any change to a model, part, drug or mission, run `node tools/balance.mjs`. It must exit 0 (every LESSON CHECK `ok`), and each mission must keep several winning designs, including starter-part wins for missions reachable before research.
 - Each mission teaches one lesson (listed in the harness's `LESSONS`). Debrief `notes` name the actual cause of failure, so a new failure mode gets its own note.
 - Resistance in the treatment model is a genotype population (bitmask per drug). Mutants under half a cell are zeroed, so resistance only takes hold when many microbes survive. That rule is what makes full courses, real doses and combos matter. Keep it.
+- Each trial has one mid-trial checkpoint. For vaccines, day 10 offers an extra booster: `simulate()` reruns with one more dose, and the curves before day 14 stay identical. For treatments, `txCheckpointDay(m)` lets the player change the regimen: `simulateTx(rx, m, { day, rx: newRx })`. Keeping the plan must reproduce the no-checkpoint run exactly (cost, side effects, outcome). The harness's CHECKPOINT CHECKS enforce that, plus one rescue lesson per mission.
+- `simulate()` returns a `breakdown` (each part's contribution, 0–1 against the best available) and one `clue` aimed at the weakest link. The vaccine debrief shows these in place of a list of causes, so a new vaccine part needs a breakdown row and a clue.
 
 ## Content rules
 

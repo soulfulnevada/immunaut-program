@@ -9,6 +9,10 @@ Built with Claude Code in one session. All of it works and was played through in
 | Vaccine campaign | 5 missions: lab with carrier/antigen/adjuvant/delivery/doses, 3D trial, debrief, science and research tree. Jacob has beaten all 5. |
 | Treatment campaign | 5 missions: antibiotics/antivirals, combo slot, dose/frequency/course length, resistant strains drawn in orange. |
 | Sandbox | Custom pathogen builder, then either lab with everything unlocked and no budget. |
+| Battle view | Camera zooms in on the infection at exposure or treatment start (🔍/🌐 toggle). Antibodies or drug molecules hunt microbes, kills flash, and resistant microbes wear orange shields that drugs bounce off. |
+| Mid-trial checkpoint | Vaccines: day-10 bloodwork with an option to add a booster. Treatments: lab results (load trend, % resistant per drug) with a plan editor. The debrief says whether the change helped compared with the original plan. |
+| Vaccine debrief | "What drove your result" bars per part, weakest link highlighted, plus one clue. |
+| No-WebGL fallback | Shows a notice and the game still runs. |
 | Mobile layout | Works at phone width (panels stack). |
 | GitHub | Public repo https://github.com/soulfulnevada/immunaut-program, branch `main`. |
 | Netlify | **Not live yet.** See the next section. |
@@ -28,7 +32,6 @@ After that, every push to `main` redeploys.
 
 These were offered to Jacob but not picked yet. Confirm with him before starting one.
 
-- Close-up animation when antibodies neutralize a virus or a drug pops a bacterium
 - Sound effects and music
 - Cutaway human-body view in place of the abstract vessel loop
 - More treatment drugs (antifungals, a gut-microbiome side-effect meter)
