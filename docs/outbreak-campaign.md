@@ -1,6 +1,6 @@
-# Outbreak campaign — design sketch (v2)
+# Outbreak campaign — design sketch (v3)
 
-Status: **draft for review. Nothing is built yet.** v2 settles the rules flagged in Jacob and Codex's review (see "Changes from v1" at the end).
+Status: **draft for review. Nothing is built yet.** v3 closes the last open rules from review (see "Changes from v2" and "Changes from v1" at the end).
 
 ## The idea
 
@@ -44,9 +44,27 @@ Chapter 2's brief keeps these three clearly separate. Guesses never pose as find
 | Guessed | **Your assessment:** no resistance (untested) |
 | Left it blank | **Not tested** |
 
-### Grading: a commendation, not cash
+### No free answers
 
-The chapter 1 debrief grades each field (right / wrong / not tested), names the test that would have answered it, and awards a **case-file commendation** (bronze / silver / gold) for the final report. There's **no money bonus**: good evidence pays off through better decisions in chapters 2 and 3. A bonus can be added later if testing shows investigating feels unrewarding.
+Chapter 1 ends with a **case-file summary, not a grade**. It lists your lab results and your assessments exactly as recorded. It does **not** say whether a guess was right, and it doesn't reveal what an untested field would have shown. Otherwise skipping tests would cost nothing.
+
+- **Grading happens in the town report**, after chapter 3. Each field is marked right, wrong or not tested, alongside the test that would have answered it.
+- **Chapters 2 and 3 never quote the truth for untested fields.** Debrief lines that cite a lab fact (today: "Lab tests showed 30% of these bacteria already resist penicillin") are reworded to what the player *observed* in play ("Penicillin stopped working: most of the bacteria shrugged it off"). Learning from what happens on screen is fair; being told the hidden answer isn't.
+- Replaying a chapter doesn't reset this: anything you've *seen happen* in a previous run is knowledge you earned.
+
+### The commendation (no cash)
+
+There's **no money bonus**: good evidence pays off through better decisions in chapters 2 and 3. The **case-file commendation** is awarded in the town report:
+
+| Each field | Points |
+|---|---|
+| Tested (a lab result is always correct) | **2** |
+| Untested, but your assessment was right | **1** (a lucky or reasoned guess counts, but less than evidence) |
+| Untested and wrong, or left blank | 0 |
+
+Five fields, so 10 points maximum: **🥇 Gold 9–10 · 🥈 Silver 7–8 · 🥉 Bronze 4–6 · none below 4.**
+
+This deliberately pulls against the 💰 medal. Running all five tests ($19k) guarantees gold but eats budget, so a top run means choosing which tests are worth paying for.
 
 ## Chapter 2: Respond
 
@@ -68,17 +86,22 @@ Calculated **once, when chapter 2 ends**. Chapter 3 starts from the result.
 
 The rules **don't stack**. The highest one that applies wins, and the cap is **60%**. Drugs never used stay at their starting level.
 
-**Wave size and timing:**
+**Wave size and timing.** Every chapter 2 run ends in **exactly one** of these four outcomes. Check them **top to bottom; the first that applies wins**:
 
-| Ch2 outcome | Second wave |
-|---|---|
-| Cured | **Small:** exposure day 60, starting load as designed |
-| Cured, but over the side-effect limit | **Normal:** exposure day 60, load ×3 (patients stopped coming in) |
-| Hospitalized | **Large:** exposure day 45, load ×10 |
+| # | Ch2 outcome | Second wave |
+|---|---|---|
+| 1 | **Hospitalized** at any point | **Large:** exposure day 45, load ×10 |
+| 2 | **Still infected** when chapter 2 ends (not cleared, never hospitalized) | **Lingering:** exposure day 50, load ×5 (the town never fully cleared it) |
+| 3 | **Cleared, but over the side-effect limit** | **Normal:** exposure day 60, load ×3 (patients stopped coming in) |
+| 4 | **Cleared within limits** | **Small:** exposure day 60, starting load as designed |
+
+**Hospitalized, then recovered?** That can't happen. In the treatment engine, hospitalization **ends the trial on the spot** (it's the game's equivalent of a crash), so a hospitalized run is always outcome 1. The rules say this explicitly so a future engine change can't make it ambiguous.
+
+The same four outcomes apply whatever drugs were used, including the wrong kind of drug, and with or without a checkpoint switch.
 
 **Money:** chapter 3's budget is what's left after chapter 2.
 
-Because every rule lands on a small set of fixed values (resistance ∈ {0, 15, 30, 45, 60}% per drug, wave ∈ {small, normal, large}), the number of possible chapter 3 starting states is **finite and small**. That's what makes the no-dead-ends guarantee testable.
+Because every rule lands on a small set of fixed values (resistance ∈ {0, 15, 30, 45, 60}% per drug, wave ∈ {small, normal, lingering, large}), the number of possible chapter 3 starting states is **finite and small**. That's what makes the no-dead-ends guarantee testable.
 
 ## Chapter 3: Adapt
 
@@ -96,10 +119,10 @@ If chapter 3's budget would fall below **$60k**, the town council provides an **
 ## Ending: the town report
 
 Three medals plus the commendation:
-- 🏥 **Town protected:** chapter 3 succeeded.
-- 🧫 **Resistance contained:** every drug ended chapter 3 at or below its starting resistance (penicillin 30%, others 0%).
-- 💰 **Budget left:** at least $20k unspent **and no emergency grant used**.
-- 📋 **Case-file commendation:** bronze / silver / gold from chapter 1.
+- 🏥 **Town protected:** chapter 3 succeeded (the vaccine met its protection goal, or the treatment cured the patient within the limits).
+- 🧫 **Resistance contained:** across the **whole campaign**, no drug ever rose above its starting resistance (penicillin 30%, others 0%). It's checked **after chapter 2** (the carry-forward levels) and, on the treatment route, **after chapter 3** (the same per-drug rules, applied to chapter 3's run). **Choosing to vaccinate in chapter 3 doesn't erase resistance you bred in chapter 2.** If penicillin went to 45% in chapter 2, this medal is gone for that run, whichever route you take.
+- 💰 **Budget left:** at least $20k unspent at the end **and no emergency grant used**.
+- 📋 **Case-file commendation:** gold / silver / bronze from the points table in chapter 1, revealed here along with the field-by-field grading.
 
 It also shows a timeline of your key decisions ("Ch1: skipped sequencing · Ch2 day 3: switched to Growth Blocker") and science earned.
 
@@ -131,6 +154,12 @@ Then playtest one complete Harbor Fever run before anything else.
 ## Later: a second outbreak
 
 Same three-chapter framework, different pressure: a **fast-mutating virus**, where strain matching, timing and vaccine durability are central and drugs matter less. Built only after Harbor Fever works.
+
+## Changes from v2
+
+- **No free answers:** chapter 1 ends with a summary, not a grade. Guesses and untested fields are graded only in the town report, and chapter 2–3 debriefs describe what the player observed instead of quoting hidden lab facts.
+- **Every chapter 2 outcome is covered:** four ordered outcomes (hospitalized → still infected → cleared over the limit → cleared), including the new "still infected" case. Hospitalization ends the trial, so "hospitalized then recovered" can't occur.
+- **Awards are fully defined:** commendation points (tested 2, right guess 1), gold 9–10 / silver 7–8 / bronze 4–6, and 🧫 judged across the whole campaign, so vaccinating in chapter 3 doesn't erase chapter 2 resistance.
 
 ## Changes from v1
 
