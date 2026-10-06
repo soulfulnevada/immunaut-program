@@ -3420,6 +3420,11 @@ function lastAttemptHtml(m) {
   const condHtml = condDiff.length ? `<div class="cmp-cond">⚠ <b>Different conditions:</b> ${condDiff.map(k => `${COND_LABEL[k]} ${prev.cond[k]} → <b>${now.cond[k]}</b>`).join(' · ')}.
     ${condDiff.includes('run') ? 'This is a new run of the outbreak, and the culprit may be different' : 'Earlier chapters played out differently'}, so this isn\u2019t a like-for-like test of your plan.</div>` : '';
   if (!!prev.change !== !!now.change) changes.push(`Checkpoint: ${prev.change ? 'changed plan' : 'kept plan'} → <b>${now.change ? 'changed plan' : 'kept plan'}</b>`);
+  // both changed the plan at the checkpoint: compare what they changed it to
+  else if (prev.change?.rx && now.change?.rx) for (const k of keys) {
+    const a = prev.change.rx[k] ?? null, b = now.change.rx[k] ?? null;
+    if (a !== b) changes.push(`Checkpoint ${label[k].toLowerCase()}: ${show(k, a)} → <b>${show(k, b)}</b>`);
+  }
   // green when the number moved the good way
   const move = (a, b, fmt, upIsGood) => {
     const cls = Math.abs(b - a) < 1e-9 ? '' : (b > a) === upIsGood ? 'ok' : 'no';
