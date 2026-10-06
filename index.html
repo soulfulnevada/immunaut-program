@@ -260,6 +260,13 @@
   .ob-mastery.won > b { color: #ffd166; }
   .ob-mastery small { color: var(--muted); font-size: 12px; }
   .ob-mastery p { margin: 4px 0 0; font-size: 13px; color: #d6e6fb; }
+  .pc-grid { padding: 10px 12px; border-radius: 10px; background: #ffffff06; border: 1px solid var(--line); margin: 10px 0; font-size: 13px; }
+  .pc-grid table { border-collapse: collapse; width: 100%; margin-top: 6px; }
+  .pc-grid th, .pc-grid td { padding: 4px 6px; text-align: center; border-bottom: 1px solid #ffffff10; font-size: 12px; }
+  .pc-grid th:first-child, .pc-grid td:first-child { text-align: left; }
+  .pc-grid td.done { color: var(--good); font-weight: 700; }
+  .pc-grid td.open { color: var(--muted); }
+  .pc-grid.won { border-color: #5be38f66; background: #5be38f0d; }
   .mastered { font-style: normal; font-size: 12px; color: #ffd166; margin-left: 4px; }
   .ob-medals { display: grid; gap: 6px; }
   .ob-medal { display: grid; grid-template-columns: 30px 1fr auto; gap: 8px; align-items: center; padding: 8px 10px; border-radius: 10px; background: #ffffff06; opacity: .65; }
@@ -1090,6 +1097,16 @@ function pcCarry(s, m) {
 }
 // "Right drug, right bug": chapter 2 ended on the one narrow drug that fits the real culprit.
 const pcRightDrug = (finalRx, culprit) => rxDrugs(finalRx).length === 1 && finalRx.a === PC_SUSPECTS[culprit].drug;
+// The challenge grid: win chapter 2 every way, against both culprits. A square needs a cure that finishes on the
+// right narrow drug, reached by its route: narrow from day 0, broad then narrowed at the culture, or waiting for it.
+const PC_ROUTES = { narrow: 'Narrow from day 0', broad: 'Broad, then narrow', wait: 'Wait for the culture' };
+function pcRoute(s, m, finalRx) {
+  if (!s.success || !pcRightDrug(finalRx, m.culprit)) return null;
+  if (m.start === 'wait') return 'wait';
+  if (m.start === m.culprit) return 'narrow';
+  if (m.start === 'broad' && pcBroadUse(s, m) === 'short') return 'broad';
+  return null;
+}
 function pcAfterCh2(run, s, m, finalRx) {
   const left = PINECREST.budget - run.spent.tests - s.cost;
   return { ch2: { ...pcCarry(s, m), start: m.start, right: pcRightDrug(finalRx, m.culprit), success: s.success },
@@ -2074,6 +2091,7 @@ function obReportHtml(run) {
     ['📋', 'Case-file commendation', !!com.tier, `${com.tier ? OB_TIER[com.tier] : 'None'}: ${com.pts} of 10 points (2 for each test you read correctly, 1 for each test the lab tech explained or each right guess).`]];
   return `<h3 class="sub">Town report · ${SD().name}</h3>
     ${obMasteryHtml(run)}
+    ${ST().extraHtml ? ST().extraHtml(st) : ''}
     <div class="ob-medals">${medals.map(medal).join('')}</div>
     ${ST().consequence(run).replace('What chapter 2 set up', `How chapter 2 shaped the ${ST().map.next}`)}
     <h3 class="sub">Your case file, graded</h3>
@@ -2089,7 +2107,7 @@ function obStoryCards() {
     const status = locked ? `🔒 Finish ${STORIES[S.after].data.name} to unlock` : st.run ? (st.run.chapter === 4 ? 'Run finished: see the town report' : `In progress: chapter ${st.run.chapter}`)
       : st.runs ? `Best: ${st.best.medals.map(x => S.icons[x]).join(' ') || 'no medals yet'}` : 'Not started';
     return `<button class="story-card ${storyId === id ? 'on' : ''} ${locked ? 'locked' : ''}" data-story="${id}" ${locked ? 'disabled' : ''}>
-      <b>${S.icon} ${S.data.name}${st.best.mastered ? ' <em class="mastered">⭐ Mastered</em>' : ''}</b><small>${S.teaser}</small><span>${status}</span></button>`;
+      <b>${S.icon} ${S.data.name}${st.best.mastered ? ' <em class="mastered">⭐ Mastered</em>' : ''}${S.cardBadge ? S.cardBadge(st) : ''}</b><small>${S.teaser}</small><span>${status}</span></button>`;
   }).join('')}</div>`;
 }
 function renderOutbreak() {
@@ -2100,6 +2118,7 @@ function renderOutbreak() {
       <p class="fine">Three linked chapters: investigate, respond, adapt. What you find and spend carries forward. ${ST().fine}</p>
       <p class="fine">⭐ <b>Mastery:</b> ${MASTERY_GOAL}${st.best.mastered ? ' <span class="ok">Done!</span>' : ''}</p>
       ${st.runs ? `<p class="fine">Runs finished: ${st.runs} · best medals: ${st.best.medals.map(x => ST().icons[x]).join(' ') || 'none'}</p>` : ''}
+      ${ST().extraHtml ? ST().extraHtml(st) : ''}
       <button class="primary" id="ob-start">Start ${SD().name} ▶</button></div>`;
   else body = `<div class="ob-card">${obProgressHtml(run)}${obMapHtml(run)}${run.chapter === 1 ? obCh1Html(run) : run.chapter === 2 ? ST().ch2Html(run) : run.chapter === 3 ? ST().ch3Html(run) : obReportHtml(run)}</div>`;
   list.innerHTML = obStoryCards() + body;
@@ -2385,7 +2404,20 @@ const PINE = {
   data: PINECREST, icon: '🏕️', after: 'riverbend', whatIf: run => pcWhatIf(run), teaser: PINECREST.teaser,
   fine: 'Every antibiotic is unlocked here. The culprit is picked at random for each new run and stays the same through retries and replays.',
   ch1Lead: 'Swabs from the sick campers just arrived.',
-  pickCulprit: () => Math.random() < .5 ? 'pine' : 'lake',
+  // lean 3:1 toward a culprit with unfinished challenge squares, so the grid fills without making the culprit a giveaway
+  pickCulprit: () => {
+    const g = obState('pinecrest').grid || {}, open = c => Object.keys(PC_ROUTES).some(r => !g[`${c}-${r}`]);
+    const lean = open('pine') === open('lake') ? .5 : open('pine') ? .75 : .25;
+    return Math.random() < lean ? 'pine' : 'lake';
+  },
+  cardBadge: st => { const n = Object.keys(st.grid || {}).length; return n ? ` <em class="mastered">🧩 ${n === 6 ? 'Challenge done' : `${n}/6`}</em>` : ''; },
+  extraHtml: st => {
+    const g = st.grid || {}, n = Object.keys(g).length;
+    const rows = Object.entries(PC_SUSPECTS).map(([c, sus]) => `<tr><td>${sus.name}</td>${Object.keys(PC_ROUTES).map(r => g[`${c}-${r}`] ? '<td class="done">✓</td>' : '<td class="open">·</td>').join('')}</tr>`).join('');
+    return `<div class="pc-grid ${n === 6 ? 'won' : ''}"><b>🧩 Challenge: win chapter 2 every way, against both suspects (${n}/6)</b>
+      <div class="fine">A square counts when chapter 2 cures the campers and finishes on the right narrow drug. Replaying chapter 2 lets you try another route against the same culprit. +10 ⚗ per new square.</div>
+      <table><tr><th></th>${Object.values(PC_ROUTES).map(l => `<th>${l}</th>`).join('')}</tr>${rows}</table></div>`;
+  },
   truthOf: run => pcTruth(run.culprit),
   field: { kind: 'What it is', where: 'Where they got sick', disk: 'Penicillin', speed: 'How fast', risk: 'Patients' },
   short: run => {
@@ -2418,6 +2450,12 @@ const PINE = {
   commit2(run, m, s) {
     const finalRx = trial.changeRx || trial.rx, next = pcAfterCh2(run, s, m, finalRx);
     run.spent.ch2 = next.spentCh2; run.ch2 = next.ch2; run.grant = next.grant; run.route = 'tx'; run.ch2Plan = { rx: { ...trial.rx } };
+    const route = pcRoute(s, m, finalRx), st = obState('pinecrest'), key = `${m.culprit}-${route}`;
+    if (route && !(st.grid || {})[key]) {
+      st.grid = { ...(st.grid || {}), [key]: true };
+      save.science += 10; $('sci').textContent = save.science;
+      run.timeline.push(`🧩 Challenge square: ${PC_SUSPECTS[m.culprit].name} · ${PC_ROUTES[route]} (+10 ⚗).`);
+    }
     run.timeline.push(m.start === 'wait' ? `Ch 2: waited for the culture (${m.culpritName}), then started on day ${PC_WAIT} with ${rxText(trial.rx)}.`
       : m.start === 'broad' ? `Ch 2: started broad, on ${rxText(trial.rx)}.`
       : `Ch 2: bet on ${PC_SUSPECTS[m.start].name} and started on ${rxText(trial.rx)}.`);
@@ -2471,7 +2509,20 @@ const PINE = {
   },
   // the debrief names what waiting cost
   resultNote(m, s) {
-    if (m.story !== 'pinecrest' || m.start !== 'wait') return '';
+    if (m.story !== 'pinecrest' || m.obChapter !== 2) return '';
+    return [this.waitNote(m, s), this.gridNote(m, s)];
+  },
+  gridNote(m, s) {
+    const finalRx = trial.changeRx || trial.rx, route = pcRoute(s, m, finalRx), sus = PC_SUSPECTS[m.culprit], g = obState('pinecrest').grid || {};
+    if (route) return `🧩 Challenge: this counts for <b>${sus.name} · ${PC_ROUTES[route]}</b>${g[`${m.culprit}-${route}`] ? ' (already done)' : '. Continue to chapter 3 to claim it (+10 ⚗)'}.`;
+    if (!s.success) return '';
+    const why = !pcRightDrug(finalRx, m.culprit) ? `finish on ${DRUG(sus.drug).name} alone, the narrow drug that fits ${sus.name}`
+      : m.start === 'broad' ? 'come off Broad-Spectrum when the culture comes back'
+      : `bet on ${sus.name} from day 0, start broad and narrow down, or wait for the culture`;
+    return `🧩 No challenge square this time: to earn one, ${why}.`;
+  },
+  waitNote(m, s) {
+    if (m.start !== 'wait') return '';
     const alt = pcNoWait(trial.rx, m, trial.changeRx ? { day: trial.changeDay, rx: trial.changeRx } : null), a = txOutcome(alt, m), y = txOutcome(s, m);
     const same = a.text === y.text;
     return `The ${PC_WAIT}-day wait let the infection grow about ${Math.round(pcWaitCost().grow)}× before treatment began. The same plan started on day 0 would have ended: ${a.text.toLowerCase()}${same ? ', the same as yours, so the wait cost you nothing this time' : ` (yours: ${y.text.toLowerCase()})`}.`;
@@ -2496,6 +2547,7 @@ const PINE = {
           ${bar(wc.line, 'var(--bad)')}<span>The sickest get ${pct(wc.line)} of the way to the hospital line</span></button>
       </div>
       <p class="fine">Hint: the camp map and the penicillin disk test each point straight at the culprit, if you read them right.</p>
+      ${this.extraHtml(obState())}
       <div class="ob-budget">Outbreak budget left: <b>${money(obLeft(run))}</b></div>
       ${run.wait ? `<button class="primary" id="ob-go">Open the clinic: ${PC_STARTS[run.wait].label} ▶</button>` : '<p class="fine">Pick how to start treatment to open the clinic.</p>'}`;
   },
@@ -3587,8 +3639,8 @@ function showResult() {
   let notes = m.sandbox ? s.notes.filter(n => !n.startsWith('★')) : s.notes.slice();
   // for vaccines the breakdown explains the causes, so keep only the headline and bonus goals
   if (!tx && !s.halted) notes = notes.filter((n, i) => i === notes.length - 1 && !s.success || n.startsWith('★') || s.success && i === 0);
-  const storyNote = m.outbreak && STORIES[m.story].resultNote ? STORIES[m.story].resultNote(m, s) : '';
-  if (storyNote) notes.push(storyNote);
+  const storyNote = m.outbreak && STORIES[m.story].resultNote ? STORIES[m.story].resultNote(m, s) : [];
+  notes.push(...[].concat(storyNote).filter(Boolean));
   const title = s.effect === 'none' ? 'Recovered on their own' : s.success ? (tx ? 'Patient cured!' : 'Trial successful!')
     : s.halted ? (tx ? 'Patient hospitalized' : 'Trial halted') : (tx ? 'Treatment failed' : 'Trial failed');
   const outcome = tx

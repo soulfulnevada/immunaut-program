@@ -9,7 +9,7 @@ const src = ['MODEL', 'TX-MODEL', 'OUTBREAK-MODEL'].map(k => between(`// ${k}-ST
 const M = new Function(src + `return { PARTS, MISSIONS, simulate, DRUGS, TX_MISSIONS, simulateTx, txCheckpointDay, challengeMet, CHALLENGE_TEXT,
   OUTBREAK, OB_WAVES, obCh2Mission, obCh3TxMission, obCh3VaxMission, obCarry, obResistAfter, obCommendation, obResistContained, obAfterCh2, obFinish,
   RIVERBEND, RB_WAITS, RB_WAVES, rbCh2Mission, rbCh3Mission, rbAfterCh2, rbFinish, obMastered, obWhatIf, rbWhatIf, mostImportant,
-  PINECREST, PC_SUSPECTS, PC_STARTS, PC_WAIT, pcTruth, pcCh2Mission, pcCh3Mission, pcCarry, pcBroadUse, pcAfterCh2, pcFinish, pcWaitCost, pcNoWait, pcWhatIf, pcOtherSuspect, obWave, untreated };`)();
+  PINECREST, PC_SUSPECTS, PC_STARTS, PC_WAIT, pcTruth, pcCh2Mission, pcCh3Mission, pcCarry, pcBroadUse, pcAfterCh2, pcFinish, pcWaitCost, pcNoWait, pcWhatIf, pcOtherSuspect, obWave, untreated, PC_ROUTES, pcRoute };`)();
 
 const starter = list => list.filter(p => p.unlock === 0).map(p => p.id);
 const every = list => list.map(p => p.id);
@@ -432,6 +432,26 @@ console.log('\nPINECREST CHECKS (two suspects, the culprit picked per run)');
     if (Object.values(carry.resist).some(r => !(r > 0))) zeros++;
   }
   ob(zeros === 0, `chapter 2 never hands chapter 3 a 0% resistance entry (${zeros} found)`);
+  // the challenge grid: every square can be earned, and only by its own route
+  const squares = {}; let fakes = 0;
+  for (const c of both) for (const st of styles) {
+    const right = { a: M.PC_SUSPECTS[c].drug, b: null, ...st };
+    const tries = [
+      ['narrow', M.pcCh2Mission(c, c, budget), right, null],
+      ['broad', M.pcCh2Mission('broad', c, budget), { a: 'broad', b: null, ...st }, right],
+      ['wait', M.pcCh2Mission('wait', c, budget), right, null],
+      // routes that must never count: a wrong bet rescued at the culture, and a broad course kept going
+      [null, M.pcCh2Mission(M.PC_SUSPECTS[c].other, c, budget), { a: M.PC_SUSPECTS[M.PC_SUSPECTS[c].other].drug, b: null, ...st }, right],
+      [null, M.pcCh2Mission('broad', c, budget), { a: 'broad', b: null, ...st }, null],
+    ];
+    for (const [want, m, rx, sw] of tries) {
+      const s = M.simulateTx(rx, m, sw ? { day: cp(m), rx: sw } : null), got = M.pcRoute(s, m, sw || rx);
+      if (want && got === want) squares[`${c}-${want}`] = true;
+      if (!want && got) fakes++;
+    }
+  }
+  ob(Object.keys(squares).length === 6, `every challenge square can be earned (${Object.keys(squares).length}/6)`);
+  ob(fakes === 0, `a wrong bet rescued at the culture, or a full broad course, never earns a square (${fakes} found)`);
   const wc = M.pcWaitCost();
   ob(wc.grow > 5 && wc.line < 1, `waiting costs something real but survivable: untreated growth ${wc.grow.toFixed(0)}x by day ${M.PC_WAIT}, ${Math.round(wc.line * 100)}% of the way to the hospital line`);
 

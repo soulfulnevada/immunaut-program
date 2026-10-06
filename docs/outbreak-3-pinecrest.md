@@ -103,6 +103,10 @@ Teaching moment: **broad protection now has a cost later.** Narrowing down at th
 - Every chapter 3 state is winnable at the $60k floor, whichever suspect is true (checked exhaustively, as before).
 - **Both truths are fair:** neither suspect makes the story much easier than the other.
 
+## Challenge grid (added after Codex's play-test)
+
+Six squares: each culprit × narrow from day 0 / broad then narrow at the culture / wait for the culture. A square needs a chapter 2 cure that finishes on the right narrow drug by its own route (a wrong bet rescued at the culture, or a broad course kept past it, doesn't count). Replaying chapter 2 can fill another square against the same culprit. +10 science per new square; the story card shows 🧩 n/6. New runs lean 3:1 toward a culprit with open squares instead of forcing it, so the investigation still matters.
+
 ## Changes while building
 
 - **The culture is slower once antibiotics have started (day 5 instead of day 3).** Without this, a blind narrow guess was never worse than waiting: a wrong guess switched drugs on day 3, the same day a waiter started treatment. That made "Wait for the culture" pointless. This is real medicine, simplified: hospitals take cultures before the first dose because antibiotics in the sample slow or spoil the result. Now a wrong guess loses 5 days and waiting loses 3.
