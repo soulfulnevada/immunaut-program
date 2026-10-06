@@ -1,6 +1,6 @@
-# Outbreak 3: Pinecrest Camp (design sketch v1)
+# Outbreak 3: Pinecrest Camp (design sketch v2)
 
-Status: **sketch for review. Nothing is built yet.** It reuses the three-chapter framework from Harbor Fever (`docs/outbreak-campaign.md`) and Riverbend Flu (`docs/outbreak-2-riverbend-flu.md`): shared budget, case file with evidence to read, carry-forward on fixed values, snapshots and replays, town map, consequence card, town report, Mastery. This doc only covers what's **different**.
+Status: **v2, with Jacob and Codex's answers applied (see "Changes from v1"). Nothing is built yet.** It reuses the three-chapter framework from Harbor Fever (`docs/outbreak-campaign.md`) and Riverbend Flu (`docs/outbreak-2-riverbend-flu.md`): shared budget, case file with evidence to read, carry-forward on fixed values, snapshots and replays, town map, consequence card, town report, Mastery. This doc only covers what's **different**.
 
 ## Where it lives
 
@@ -27,21 +27,28 @@ A summer camp in the hills. Campers and counselors are coming down with fever an
 
 ## The truth is picked per run
 
-If the culprit were always the same, a second playthrough would just give the answer away. So **when you start a new run, the game secretly picks A or B**. It stays fixed for that run, including replays from snapshots, so retries remain fair comparisons. The model stays pure and deterministic: the truth is an input to the run, never a random roll during it.
+If the culprit were always the same, a second playthrough would just give the answer away. So **when you start a new run, the game secretly picks A or B** and saves it with the run. It stays fixed through **retries, replays from snapshots and page reloads**, so retries remain fair comparisons. Only "New run" picks again. The model stays pure and deterministic: the truth is an input to the run, never a random roll during it.
 
-## Chapter 1: Investigate (incomplete evidence)
+## Chapter 1: Investigate (honest but incomplete evidence)
 
-Same screen as before: paid tests, evidence to read, lab-tech help for a point. The difference: **most tests lean one way but don't prove it.** Each reading is "leans A", "leans B" or "can't tell".
+Same screen as before: paid tests, evidence to read, lab-tech help for a point. **No test ever misleads.** Every test that points somewhere points at the real culprit, and its picture is drawn from the truth of this run. The uncertainty comes from **which tests you pay for and how well you read them**, not from tests lying.
 
-| Test | Evidence to read | What it really tells you |
-|---|---|---|
-| Microscope | Rod-shaped bacteria | Both suspects look like this. **Can't tell**, but it rules out a virus. |
-| Camp map | Where sick campers sleep and swim | Clustered near the lake leans B; spread across the cabins leans A. |
-| Quick swab test | A faint or clear test line | Right about 3 times in 4. A clue, not proof. |
-| Patient charts | Ages and symptoms | How gentle the treatment must be (the side-effect limit) |
-| **Culture** | Grows the real bug in a dish | **The only proof**, but results take 3 days. See chapter 2. |
+| Test | Cost | Evidence to read | What it tells you |
+|---|---|---|---|
+| Microscope | $2k | Rod-shaped bacteria | Both suspects look like this, so it **can't tell them apart**. It rules out a virus. |
+| Camp map | $3k | Where sick campers sleep and swim | **Points at the culprit:** sick campers cluster around the lake (B) or spread across the cabins (A). |
+| Penicillin disk test | $5k | A dish with a penicillin disk: a clear ring around it, or bacteria growing right up to it | **Points at the culprit:** a clear ring means penicillin works (A); no ring means it doesn't (B). |
+| Patient charts | $1k | Ages and symptoms | No help with the culprit. Tells you how gentle the treatment must be (the side-effect limit). |
 
-The case file still scores how well you read each test. For the leaning tests, "leans B" is the right reading if the evidence leans B, even when the truth turns out to be A. That rewards reading the evidence well, not getting lucky.
+So a player who runs and correctly reads **either** the camp map **or** the disk test knows the culprit. The tension:
+
+- **Those two tests cost $8k together**, out of a tight budget. Skipping them saves money but leaves you guessing.
+- **Reading them takes skill.** Asking the lab tech costs a commendation point, and misreading sends you narrow on the wrong drug.
+- Each test is a different kind of evidence (where people got sick, and how the bug reacts to a drug), so both are worth learning to read.
+
+The case file scores readings as before: read right 2, lab-tech help 1, misread 0, a right guess 1.
+
+**The culture** isn't a chapter 1 test. It's the "wait for the culture" button in chapter 2: free proof, but it costs time.
 
 ## Chapter 2: Respond (the distinctive decision)
 
@@ -51,19 +58,22 @@ Before the lab opens, you choose **how to start treatment**, as three side-by-si
 |---|---|---|
 | **Narrow now** (your best guess) | Penicillin if you think A, Growth Blocker if you think B. Cheap and gentle, no broad resistance. | A wrong guess means patients go untreated until the checkpoint. |
 | **Broad now** | Broad-Spectrum covers both suspects from day 0. | More side effects and cost, and it breeds broad-spectrum resistance that shows up in chapter 3. |
-| **Wait for the culture** | No guessing: you treat the right bug narrowly. | Treatment starts 3 days late, so patients are much sicker and the hospital line is close. |
+| **Wait for the culture** | No guessing: the lab opens with the culprit confirmed, and you treat the right bug narrowly. | **Treatment starts 3 days late.** |
+
+**The cost of waiting is shown up front.** Before you choose, the button shows a small preview of an untreated patient's infection on day 0 vs day 3, against the hospital line ("By day 3, untreated campers are about 4× sicker, and the sickest are close to the hospital line"). In the lab, the brief shows "Treatment starts on day 3" in warning colors, and the debrief credits or blames the delay by name, for example: "The 3-day wait let the infection grow 4×. Treating right away would have kept 2 campers out of the hospital."
 
 **The checkpoint is where the culture comes back.** It arrives on day 3 of treatment, the existing treatment checkpoint, and reveals the truth. You can then change the plan as usual:
 
 - Started **broad** → **narrow down** to the right drug ("de-escalation"). This is often the smart real-world move, and it limits the resistance bred.
 - Guessed **narrow and wrong** → switch to the right drug and rescue the patients, late.
 - Guessed **narrow and right** → keep the plan.
+- **Waited** → there's nothing left to reveal, so it's the usual treatment checkpoint.
 
 **Engine fit:** no new mechanics. A suspect is just the Harbor-style bug with penicillin resistance set to 0% (A) or 100% (B). "Wait for the culture" only moves the treatment start day. The checkpoint already exists.
 
-## Chapter 3: Adapt
+## Chapter 3: Adapt (treatment only)
 
-The truth is now known. A second wave arrives, shaped by chapter 2. There's no new decision type: you treat or vaccinate, as in Harbor Fever.
+The truth is now known. A second wave of the **same culprit** arrives, shaped by chapter 2. **Chapter 3 is treatment only.** Identifying the culprit and adapting your treatment to it is this outbreak's identity, so there's no vaccine route (unlike Harbor Fever). The brief names the confirmed culprit and the resistance left behind, and you design the regimen.
 
 | From chapter 2 | Chapter 3 effect |
 |---|---|
@@ -86,12 +96,16 @@ Teaching moment: **broad protection now has a cost later.** Narrowing down at th
 
 - **The start choice is real:** each of the three buttons is the best choice for some evidence states. Strong evidence favors narrow, ambiguous evidence favors broad-then-narrow, and a frail camp or a big budget favors waiting.
 - **Narrow on a blind guess is risky:** with no tests run, "narrow now" must lose more often than "broad now".
+- **Evidence is reliable:** for both culprits, a correct reading of the camp map or the disk test always names the true culprit, and the microscope and patient charts never point either way.
+- **Waiting is a real option:** for some evidence states (no culprit test run, or a misreading risk the player avoided), waiting for the culture wins. For others, its delay loses to treating now.
+- **The culprit is fixed per run:** a retry, a replay from a snapshot or a reload never changes it; only a new run picks again.
 - **De-escalating beats a full broad course** on chapter 3 resistance, for every winning chapter 2 plan.
 - Every chapter 3 state is winnable at the $60k floor, whichever suspect is true (checked exhaustively, as before).
 - **Both truths are fair:** neither suspect makes the story much easier than the other.
 
-## Open questions
+## Changes from v1
 
-1. **Truth per run** (my recommendation) **or always the same culprit?** A fixed culprit is simpler but spoils replays.
-2. **Is three start buttons right,** or should "wait for the culture" be cut to keep it to narrow vs broad?
-3. **Chapter 3 route:** treatment only (simpler, keeps the focus on antibiotics), or treat-or-vaccinate as in Harbor Fever?
+- **The culprit is randomized per new run**, then saved with the run, so retries, replays and reloads never change it.
+- **Evidence is reliable:** no test misleads. The 75%-accurate swab is replaced by a penicillin disk test that always shows the truth. Uncertainty now comes from which tests you buy and how you read them.
+- **All three start buttons stay.** Waiting for the culture shows its cost up front (a preview, the day-3 warning in the brief, and the debrief naming the delay's effect).
+- **Chapter 3 is treatment only.** No vaccine route for now.
