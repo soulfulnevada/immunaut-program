@@ -417,6 +417,21 @@ console.log('\nPINECREST CHECKS (two suspects, the culprit picked per run)');
     `with the culprit known, the best right-drug plan beats the best broad or wait plan (${both.map(c => `${c}: ${known[c].narrow.toFixed(1)} vs ${Math.max(known[c].broad, known[c].wait).toFixed(1)}`).join(', ')})`);
   ob(wins.guess < wins.broad, `a blind narrow guess wins less often than starting broad (${wins.guess} vs ${wins.broad} plans)`);
   ob(deesc.checked > 0 && deesc.worse === 0, `narrowing down at the culture leaves less Broad-Spectrum resistance than a full course (${deesc.checked} plans)`);
+  // the report describes what the player actually did: switching onto Broad-Spectrum at the culture is not "coming off" it,
+  // and only drugs that really lost ground are listed
+  // (a switch that breeds resistance reads "bred", so look across switch plans for the ones that don't)
+  const onto = (() => { const m = M.pcCh2Mission('lake', 'pine', budget), seen = new Set();
+    for (const st of styles) seen.add(M.pcCarry(M.simulateTx({ a: 'tetra', b: null, dose: 'std', freq: 2, dur: 7 }, m, { day: cp(m), rx: { a: 'broad', b: null, ...st } }), m).broad);
+    return [...seen].filter(x => x !== 'bred' && x !== 'none').join('/'); })(); // a 5-day switch after day 5 gives no doses at all
+  const off = (() => { const m = M.pcCh2Mission('broad', 'pine', budget); return M.pcCarry(M.simulateTx({ a: 'broad', b: null, dose: 'std', freq: 2, dur: 7 }, m, { day: cp(m), rx: { a: 'pen', b: null, dose: 'std', freq: 3, dur: 7 } }), m).broad; })();
+  ob(onto === 'onto' && off === 'short', `broad use is judged by timing: switching onto it reads "${onto}", coming off it reads "${off}"`);
+  let zeros = 0;
+  for (const st of styles) for (const c of both) for (const start of ['pine', 'lake', 'broad', 'wait']) {
+    const m = M.pcCh2Mission(start, c, budget), a = M.PC_STARTS[start].drugs ? M.PC_STARTS[start].drugs[0] : M.PC_SUSPECTS[c].drug;
+    const carry = M.pcCarry(M.simulateTx({ a, b: null, ...st }, m), m);
+    if (Object.values(carry.resist).some(r => !(r > 0))) zeros++;
+  }
+  ob(zeros === 0, `chapter 2 never hands chapter 3 a 0% resistance entry (${zeros} found)`);
   const wc = M.pcWaitCost();
   ob(wc.grow > 5 && wc.line < 1, `waiting costs something real but survivable: untreated growth ${wc.grow.toFixed(0)}x by day ${M.PC_WAIT}, ${Math.round(wc.line * 100)}% of the way to the hospital line`);
 

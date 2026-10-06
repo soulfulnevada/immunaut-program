@@ -1048,7 +1048,7 @@ const PC_STARTS = {
 };
 const PC_WAIT = 3;                                     // days a clean culture takes
 const PC_LATE = 5;                                     // a culture drawn after antibiotics started grows slower
-const PC_BROAD_CARRY = { none: 0, short: .15, full: .45, bred: .6 };
+const PC_BROAD_CARRY = { none: 0, short: .15, full: .45, onto: .45, known: .45, bred: .6 };
 const PC_BUG = { kind: 'bacteria', site: 'Lungs', pathogen: 'Camp fever', immune: .2, ramp: 0, mop: 1.8, mutation: 5e-7,
   growth: 1.2, n0: 3e7, adherence: 1, startDay: 0, days: 28, cureBelow: 1, critical: 5e9, durations: [3, 5, 7, 10, 14] };
 function pcCh2Mission(start, culprit, budget) {
@@ -1065,18 +1065,28 @@ function pcCh3Mission(carry, culprit, budget) {
     culprit, culpritName: c.name, pathogen: c.name, ignores: c.ignores, n0: PC_BUG.n0 * w.load, preResist: { ...carry.resist }, wave: carry.wave,
     blurb: `A ${w.label.toLowerCase()} second wave of ${c.name}. You know the culprit now: treat it, with whatever resistance the first wave left behind.` };
 }
-// How much Broad-Spectrum chapter 2 used: none, only until the culture (narrowed at the checkpoint), or a full course.
-function pcBroadUse(s) {
+// How chapter 2 used Broad-Spectrum, judged by when it was given relative to the culture result:
+// none; only before the culture (came off when it came back); before and after (kept going); only after
+// (switched onto it); after the culture had already named the culprit (wait start); or it bred resistance.
+function pcBroadUse(s, m) {
   const j = s.ids.indexOf('broad');
   if (j < 0 || !s.doses[j].length) return 'none';
   if (s.resistedBy[j]) return 'bred';
-  return new Set(s.doses[j].map(Math.floor)).size <= PC_LATE ? 'short' : 'full';
+  if (!m.culture) return 'known';
+  const cp = txCheckpointDay(m), before = s.doses[j].some(t => t < cp - 1e-9), after = s.doses[j].some(t => t >= cp - 1e-9);
+  return before && after ? 'full' : before ? 'short' : 'onto';
 }
 function pcCarry(s, m) {
-  const resist = obResistAfter(s, {}), use = pcBroadUse(s);
-  resist.broad = Math.max(resist.broad || 0, PC_BROAD_CARRY[use]);
-  if (!resist.broad) delete resist.broad;
-  return { resist, wave: obWave(s, m), broad: use };
+  const raw = obResistAfter(s, {}), use = pcBroadUse(s, m);
+  raw.broad = Math.max(raw.broad || 0, PC_BROAD_CARRY[use]);
+  // only drugs that actually lost ground carry forward, each with its reason
+  const resist = {}, why = {};
+  for (const [id, r] of Object.entries(raw)) if (r > 1e-9) {
+    resist[id] = r;
+    const j = s.ids.indexOf(id);
+    why[id] = id === 'broad' && !s.resistedBy[j] ? 'use' : s.resistedBy[j] ? 'bred' : 'relapse';
+  }
+  return { resist, why, wave: obWave(s, m), broad: use };
 }
 // "Right drug, right bug": chapter 2 ended on the one narrow drug that fits the real culprit.
 const pcRightDrug = (finalRx, culprit) => rxDrugs(finalRx).length === 1 && finalRx.a === PC_SUSPECTS[culprit].drug;
@@ -1103,7 +1113,7 @@ function pcNoWait(rx, m, change) {
 function pcWhatIf(run) {
   const p = run.ch3Plan;
   const ch3 = (carry, what, ch2ok) => ({ what, ch2ok, res: simulateTx(p.rx, pcCh3Mission(carry, run.culprit, 999)) });
-  const scen = [], bred = Object.keys(run.ch2.resist).length > 0;
+  const scen = [], bred = Object.values(run.ch2.resist).some(r => r > 1e-9);
   if (run.ch2.wave !== 'small' || bred) scen.push(ch3({ wave: 'small', resist: {} }, 'a clean first-wave cure in chapter 2 (small second wave, no resistance left behind)', true));
   if (run.ch2.wave !== 'small' && bred) scen.push(ch3({ ...run.ch2, wave: 'small' }, 'a smaller second wave (chapter 2 cleared cleanly), with the same resistance', true));
   if (run.ch2.resist.broad) scen.push(ch3({ ...run.ch2, resist: { ...run.ch2.resist, broad: 0 } }, 'no Broad-Spectrum resistance left behind, with the same second wave', !!run.ch2.success));
@@ -2367,6 +2377,8 @@ const PC_BROAD_TEXT = {
   none: '<b>You never used Broad-Spectrum</b> → it\u2019s as strong as ever for the second wave.',
   short: '<b>You came off Broad-Spectrum when the culture came back</b> → only 15% of the second wave resists it.',
   full: '<b>You kept Broad-Spectrum going past the culture</b> → 45% of the second wave resists it.',
+  onto: '<b>You switched onto Broad-Spectrum when the culture came back</b> → 45% of the second wave resists it.',
+  known: '<b>You used Broad-Spectrum after the culture had already named the culprit</b> → 45% of the second wave resists it.',
   bred: '<b>Resistant bacteria multiplied while you used Broad-Spectrum</b> → 60% of the second wave resists it.',
 };
 const PINE = {
@@ -2400,7 +2412,7 @@ const PINE = {
     }
     if (run.chapter === 3) return `<div><span>Culprit</span><span>${m.culpritName}: ${DRUG(m.ignores[0]).name} can\u2019t touch it</span></div>`
       + `<div><span>Second wave</span><span>${OB_WAVES[run.ch2.wave].label}: ${OB_WAVES[run.ch2.wave].load === 1 ? 'the same size as the first' : `${OB_WAVES[run.ch2.wave].load}× the first wave\u2019s size`}</span></div>`
-      + (Object.keys(run.ch2.resist).length ? `<div><span>Left behind</span><span>${Object.entries(run.ch2.resist).map(([id, r]) => `${pct(r)} resist ${DRUG(id).name}`).join(', ')}</span></div>` : '');
+      + (Object.values(run.ch2.resist).some(r => r > 1e-9) ? `<div><span>Left behind</span><span>${Object.entries(run.ch2.resist).filter(([, r]) => r > 1e-9).map(([id, r]) => `${pct(r)} resist ${DRUG(id).name}`).join(', ')}</span></div>` : '');
     return '';
   },
   commit2(run, m, s) {
@@ -2429,7 +2441,9 @@ const PINE = {
     const c = run.ch2, w = OB_WAVES[c.wave], sus = PC_SUSPECTS[run.culprit], lines = [];
     lines.push(`<li><b>${PC_OUTCOME[c.wave]}</b> → a <b>${w.label.toLowerCase()}</b> second wave, ${w.load === 1 ? 'the same size as the first' : `${w.load}× the first wave\u2019s size`}.${c.wave === 'small' ? ' That\u2019s the best case.' : ' <span class="ob-best">A clean cure would have meant a small wave, the same size as the first.</span>'}</li>`);
     lines.push(`<li>${PC_BROAD_TEXT[c.broad]}</li>`);
-    for (const id of Object.keys(c.resist).filter(id => id !== 'broad')) lines.push(`<li><b>${DRUG(id).name}: ${pct(c.resist[id])} resistant</b>, because resistant bacteria survived while you used it.</li>`);
+    const because = { bred: 'resistant bacteria multiplied while you used it', relapse: 'the infection came back while you were using it' };
+    // older saves kept 0% entries and no reasons: show only drugs that rose
+    for (const id of Object.keys(c.resist).filter(id => id !== 'broad' && c.resist[id] > 1e-9)) lines.push(`<li><b>${DRUG(id).name}: ${pct(c.resist[id])} resistant</b>${(c.why || {})[id] && because[c.why[id]] ? `, because ${because[c.why[id]]}` : ''}.</li>`);
     lines.push(c.right ? `<li><b>🎯 You finished on ${DRUG(sus.drug).name}</b>, the one narrow drug that fits ${sus.name}.</li>`
       : `<li><b>You didn\u2019t finish on ${DRUG(sus.drug).name} alone</b>, the narrow drug that fits ${sus.name}.</li>`);
     lines.push(obMoneyLine(run, 'treatment'));
@@ -3008,13 +3022,31 @@ function cultureHtml(m, plan, cleared) {
     : `${DRUG(c.drug).name} is the right narrow drug for it.`;
   return `<div class="cp-twist"><b>Culture result</b>It\u2019s <strong>${c.name}</strong>, which naturally shrugs off ${DRUG(c.ignores[0]).name}. ${advice}</div>`;
 }
+// a bacteria or virus count in words: "about 2 thousand", "30 million"
+function microbes(n) {
+  const [v, w] = n >= 1e9 ? [n / 1e9, ' billion'] : n >= 1e6 ? [n / 1e6, ' million'] : n >= 1e3 ? [n / 1e3, ' thousand'] : [n, ''];
+  return `${v < 10 && w ? v.toFixed(1).replace(/\.0$/, '') : Math.round(v)}${w} ${microbeWord()}`;
+}
+const microbeWord = () => trial.mission?.kind === 'virus' ? 'virus particles' : 'bacteria';
 function txCheckpoint() {
   const s = trial.sim, m = trial.mission, snap = s.snap, day = snap.day;
   const elapsed = day - m.startDay;
   const ratio = snap.total / Math.max(1, s.startLoad);
-  const trend = ratio < 1 ? `down ${ratio < .001 ? '99.9' : Math.round((1 - ratio) * 100)}%` : `up ${ratio < 10 ? ratio.toFixed(1) : Math.round(ratio)}×`;
+  // "cleared" only when nothing is left; a 99.6% drop is not a cure, and survivors can rebound
+  const gone = snap.total < m.cureBelow, down = Math.floor((1 - ratio) * 100);
+  const trend = gone ? (m.cureBelow > 1 ? 'Undetectable' : 'Cleared') : ratio < 1 ? (down >= 99 ? 'down over 99%' : `down ${down}%`) : `up ${ratio < 10 ? ratio.toFixed(1) : Math.round(ratio)}×`;
+  const trendNote = gone ? 'none detected' : ratio < 1 && down >= 99 ? 'some bacteria remain' : 'since treatment began';
   const sev = clamp((Math.log10(Math.max(1, snap.total)) - 6) / (Math.log10(m.critical) - 6), 0, 1);
-  const tests = s.ids.map((id, j) => `<div><small>Resist ${DRUG(id).name}</small><b class="${snap.resist[j] > .2 ? 'no' : 'ok'}">${pct(snap.resist[j])}</b></div>`).join('');
+  // a drug that can't touch this bug has no resistance to measure: say so instead of a reassuring 0%
+  const tests = gone ? '' : s.ids.map((id, j) => s.works[j]
+    ? `<div><small>Resist ${DRUG(id).name}</small><b class="${snap.resist[j] > .2 ? 'no' : 'ok'}">${pct(snap.resist[j])}</b><em>of what\u2019s left</em></div>`
+    : `<div><small>${DRUG(id).name}</small><b class="no">No effect</b><em>it can\u2019t touch this bug</em></div>`).join('');
+  // a resistance share means little without the size of what's left, and much when it's the part that regrows
+  const tough = s.ids.map((id, j) => [DRUG(id).name, snap.resist[j]]).filter(([, r], j) => s.works[j] && r > .2);
+  const loadNote = gone ? '' : `<p class="cp-note"><b>About ${microbes(snap.total)} ${ratio < 1 ? 'left' : 'now'}</b>, ${ratio < 1 ? 'down' : 'up'} from ${microbes(s.startLoad)} when treatment began.${tough.length
+    ? ` ${tough.map(([n, r]) => `${pct(r)} of them resist ${n}`).join(' and ')}. ${ratio < .01
+      ? `That\u2019s a small number, but they\u2019re the tough ones: they\u2019re what regrows if you stop or keep relying on ${tough.length > 1 ? 'those drugs' : 'that drug'}. Switching costs side effects, so weigh it against how few are left and how sick the patient is.`
+      : `With this much infection still there, ${tough.length > 1 ? 'those drugs are' : 'that drug is'} losing the fight. Switching is likely worth the extra side effects.`}` : ''}</p>`;
   const plan = { ...trial.rx };
   const durs = [...new Set([...m.durations.filter(d => d > elapsed), plan.dur])].sort((a, b) => a - b);
   // once the infection is gone, the plan can simply stop today
@@ -3028,12 +3060,13 @@ function txCheckpoint() {
     <div class="cp-kicker">Day ${day} · lab results are back</div>
     <h2>Mid-course checkpoint</h2>
     <div class="cp-grid">
-      <div><small>Infection load</small><b class="${ratio < 1 ? 'ok' : 'no'}">${trend}</b><em>since treatment began</em></div>
+      <div><small>Infection load</small><b class="${ratio < 1 ? 'ok' : 'no'}">${trend}</b><em>${trendNote}</em></div>
       ${tests}
       <div><small>Patient</small><b class="${sev > .6 ? 'no' : sev > .3 ? '' : 'ok'}">${sev > .6 ? 'Very sick' : sev > .3 ? 'Sick' : 'Stable'}</b></div>
       <div><small>Side effects so far</small><b>${pct(sideSoFar)}</b><em>limit ${pct(m.maxSide)}</em></div>
     </div>
     ${tw.text ? `<div class="cp-twist"><b>New today</b>${tw.text}</div>` : ''}
+    ${loadNote}
     ${m.culture ? cultureHtml(m, plan, snap.total < m.cureBelow) : ''}
     <p class="cp-note">Now on: ${rxText(plan)}. Keep going, or adjust the plan from today. Doses already given still count. Side effects are a pharmacist's estimate. If they end up over the limit, the treatment counts as a failure.</p>
     <div class="cp-form">
