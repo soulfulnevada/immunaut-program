@@ -20,8 +20,8 @@ Built with Claude Code in one session. All of it works and was played through in
 | Tissue damage | The infected tissue swells, darkens and grows sores as the infection does harm, then heals. Shown as "43% damaged · worsening/healing" with symptoms per tissue type (lungs also get an oxygen reading and log entries when it drops and recovers). Clickable. Vaccine trials show "a typical volunteer". |
 | Predictions | Before a new design runs, the player guesses what will limit it. The debrief grades the guess with the real reason and keeps a streak. Skippable, and can be turned off in Mission Control. |
 | Planning help | Outbreak labs preview what a plan leaves for the next chapter (or the end), warning below the $60k grant floor. Vaccine labs warn when a dose would land after exposure, or too close to it to peak. |
-| Retry comparison | The results screen compares each attempt with the previous one at the same mission or chapter: what changed, and its effect on result, protection, side effects and cost. |
-| Outbreak Mastery | ⭐ on the story card for protecting the town in both waves without emergency funding. The town report names the decision that mattered most by replaying your chapter 3 plan under alternative histories. |
+| Retry comparison | The results screen compares each attempt with the previous one at the same mission or chapter: what changed, and its effect on result, protection, side effects and cost. If the outbreak conditions differed (wave, exposure day, goal, strain drift, starting resistance), a warning says it isn't a like-for-like test. |
+| Outbreak Mastery | ⭐ on the story card for protecting the town in both waves without emergency funding. The town report names the decision that mattered most by replaying your chapter 3 plan under alternative histories, leading with which waves would have been protected. |
 | No-WebGL fallback | Shows a notice and the game still runs. |
 | Mobile layout | Works at phone width (panels stack). |
 | GitHub | Public repo https://github.com/soulfulnevada/immunaut-program, branch `main`. |

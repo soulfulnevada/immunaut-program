@@ -269,6 +269,7 @@
   .ob-timeline { margin: 0; padding-left: 20px; font-size: 13px; color: #c9d5ea; }
   .ob-timeline li { margin-bottom: 3px; }
   @media (max-width: 760px) { .ob-steps { grid-template-columns: 1fr 1fr; } .ob-field { grid-template-columns: 1fr; } }
+  .cmp-cond { color: #ffd27a; }
   .last-cmp { display: grid; gap: 4px; font-size: 13px; color: #c9d5ea; background: #ffffff06; border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; margin-bottom: 14px; }
   .chal { display: grid; gap: 5px; margin-bottom: 12px; }
   .chal small { color: var(--muted); font-size: 12px; }
@@ -1034,9 +1035,11 @@ function rbWhatIf(run) {
   return { actual: ch3(run.ch2, 'what you did', !!run.ch2.success), scen };
 }
 // The single most helpful alternative, or null when nothing replayed would have done better.
+// It must keep every wave the player actually protected: swapping one protected wave for another isn't better.
 function mostImportant(w) {
-  const base = whatIfScore(w.actual);
-  return w.scen.filter(x => whatIfScore(x) > base + .005).sort((a, b) => whatIfScore(b) - whatIfScore(a))[0] || null;
+  const base = whatIfScore(w.actual), a = w.actual;
+  const keeps = x => (x.ch2ok || !a.ch2ok) && (x.res.success || !a.res.success);
+  return w.scen.filter(x => keeps(x) && whatIfScore(x) > base + .005).sort((p, q) => whatIfScore(q) - whatIfScore(p))[0] || null;
 }
 // OUTBREAK-MODEL-END
 
@@ -1904,11 +1907,19 @@ function obMasteryHtml(run) {
   let insight = '';
   if (run.ch3Plan) {
     const w = ST().whatIf(run), top = mostImportant(w);
-    const say = x => x.res.drugs ? (x.res.success ? 'cure the patient' : x.res.hosp !== null ? 'end with the patient in the hospital' : 'leave the infection uncleared')
-      : x.res.halted ? 'be halted by the safety board' : `protect ${pctP(x.res.protection)} of the town (goal ${pct(x.goal)})`;
+    const say = x => x.res.drugs ? (x.res.success ? 'a cured patient' : x.res.hosp !== null ? 'a patient in the hospital' : 'an uncleared infection')
+      : x.res.halted ? 'a trial halted by the safety board' : `${pctP(x.res.protection)} protection against a ${pct(x.goal)} goal`;
     const lead = run.mastered ? 'Your biggest remaining lever' : 'The decision that mattered most';
+    // lead with the outcome (which waves were protected), then the numbers, then why a lower number can still be better
+    const waves = x => x.ch2ok && x.res.success ? 'both waves' : x.ch2ok ? 'only the first wave' : x.res.success ? `only the ${nextName}` : 'neither wave';
+    const outcome = x => waves(top) !== waves(w.actual)
+      ? `the town would have been protected in <b>${waves(top)}</b>, instead of ${waves(w.actual)}`
+      : `the ${nextName} would have gone better`;
+    const lower = top && top.res.success && w.actual.res.success && !top.res.drugs && !top.res.halted && top.res.protection < w.actual.res.protection && top.goal < w.actual.goal;
     insight = top
-      ? `<b>${lead}:</b> ${top.what}. Then your same chapter 3 plan would <b>${say(top)}</b>, instead of ${say(w.actual)}.${!run.ch2.success && top.ch2ok ? ' The first wave would have been handled too.' : ''}`
+      ? `<b>${lead}:</b> ${top.what}. With that, ${outcome(top)}.
+        Your same chapter 3 plan would get ${say(top)}, instead of ${say(w.actual)}.${lower
+          ? ` That\u2019s a lower number, but it\u2019s facing an easier wave with a lower goal, and it still clears it. Protecting ${waves(top)} beats a higher score in ${waves(w.actual).replace('only ', '')}.` : ''}`
       : run.ch3.success ? '<b>Your path held up:</b> none of the alternative histories we replayed would have done better with your chapter 3 plan.'
       : '<b>Chapter 3’s own plan mattered most:</b> none of the alternative histories would have rescued it. A different chapter 3 design was needed.';
   }
@@ -2453,6 +2464,9 @@ function resetWorld() {
   dcs.clear(); bcells.clear(); tcells.clear(); viruses.clear(); bactS.clear(); bactR.clear(); virR.clear(); hunters.clear(); clearShots();
   for (const b of bursts) { b.life = 0; b.m.visible = false; }
   abGeo.setDrawRange(0, 0); drugGeo.setDrawRange(0, 0); scene.background.copy(BG); syringe.userData.push = 0;
+  // every new lab or trial starts with healthy tissue, drawn healthy right away
+  Object.assign(tissue, { damage: 0, healing: false, shown: '', lowO2: false, okO2: false });
+  updateTissue(0, 0, 0);
 }
 // little pictures for the 3D view's cast, matching the meshes' silhouettes and colors
 const ICONS = {
@@ -3017,6 +3031,16 @@ function planText(m, plan) {
     plan.route === 'nasal' ? 'nasal spray' : '', `${plan.doses} dose${plan.doses > 1 ? 's' : ''}`].filter(Boolean).join(' · ');
 }
 const changeText = (m, ch) => m.kind ? `day ${ch.day}: ${rxText(ch.rx)}` : `booster added on day ${ch.day}`;
+// The situation an attempt faced, as display text. In outbreaks it depends on earlier chapters, so replays can differ.
+function attemptCond(m) {
+  if (m.kind) {
+    const res = Object.entries(m.preResist || {}).filter(([, v]) => v > 0).map(([id, v]) => `${DRUG(id).name} ${pct(v)}`).join(', ') || 'none';
+    return { ...(m.wave ? { wave: OB_WAVES[m.wave].label } : {}), resist: res };
+  }
+  return { ...(m.wave ? { wave: (m.story === 'riverbend' ? RB_WAVES : OB_WAVES)[m.wave].label } : {}),
+    day: `day ${m.challengeDay}`, goal: pct(m.minProtect), drift: m.drift ? pct(m.drift) : 'none' };
+}
+const COND_LABEL = { wave: 'Wave', resist: 'Starting resistance', day: 'Exposure', goal: 'Goal', drift: 'Strain drift' };
 function recordAttempt(m, s) {
   save.attempts = save.attempts || {};
   const list = save.attempts[m.id] = attemptsFor(m).slice();
@@ -3024,7 +3048,7 @@ function recordAttempt(m, s) {
   list.unshift({
     plan: m.kind ? { ...trial.rx } : { ...trial.startDesign },
     change: m.kind ? (trial.changeRx ? { day: trial.changeDay, rx: { ...trial.changeRx } } : null) : (trial.baseSim ? { day: VAX_CHECKPOINT } : null),
-    pathogen: m.pathogen, wait: m.wait,
+    pathogen: m.pathogen, wait: m.wait, cond: attemptCond(m),
     res: { success: s.success, stars: s.stars, headline, side: s.side, cost: s.cost, protection: m.kind ? undefined : (s.halted ? 0 : s.protection) },
   });
   list.length = Math.min(list.length, ATTEMPTS_KEPT);
@@ -3040,6 +3064,10 @@ function lastAttemptHtml(m) {
   const keys = m.kind ? ['a', 'b', 'dose', 'freq', 'dur'] : ['carrier', 'antigen', 'adjuvant', 'route', 'doses'];
   const changes = keys.filter(k => (prev.plan[k] ?? null) !== (now.plan[k] ?? null)).map(k => `${label[k]}: ${show(k, prev.plan[k])} → <b>${show(k, now.plan[k])}</b>`);
   if (now.wait && prev.wait && now.wait !== prev.wait) changes.unshift(`Timing: ${RB_WAITS[prev.wait].label} → <b>${RB_WAITS[now.wait].label}</b>`);
+  // a different situation makes the numbers below an unfair comparison, so it goes first
+  const condDiff = prev.cond && now.cond ? Object.keys(now.cond).filter(k => prev.cond[k] !== now.cond[k]) : [];
+  const condHtml = condDiff.length ? `<div class="cmp-cond">⚠ <b>Different conditions:</b> ${condDiff.map(k => `${COND_LABEL[k]} ${prev.cond[k]} → <b>${now.cond[k]}</b>`).join(' · ')}.
+    Earlier chapters played out differently, so this isn\u2019t a like-for-like test of your plan.</div>` : '';
   if (!!prev.change !== !!now.change) changes.push(`Checkpoint: ${prev.change ? 'changed plan' : 'kept plan'} → <b>${now.change ? 'changed plan' : 'kept plan'}</b>`);
   // green when the number moved the good way
   const move = (a, b, fmt, upIsGood) => {
@@ -3050,7 +3078,7 @@ function lastAttemptHtml(m) {
   if (!m.kind && prev.res.protection != null && now.res.protection != null) effects.push(`Protection ${move(prev.res.protection, now.res.protection, pctP, true)}`);
   effects.push(`Side effects ${move(prev.res.side, now.res.side, pct, false)}`, `Cost ${move(prev.res.cost, now.res.cost, money, false)}`);
   return `<h3 class="sub">Compared with your last attempt</h3>
-    <div class="last-cmp"><div><b>What changed:</b> ${changes.length ? changes.join(' · ') : 'nothing: the same plan as last time'}</div><div><b>Effect:</b> ${effects.join(' · ')}</div></div>`;
+    <div class="last-cmp">${condHtml}<div><b>What changed:</b> ${changes.length ? changes.join(' · ') : 'nothing: the same plan as last time'}</div><div><b>Effect:</b> ${effects.join(' · ')}</div></div>`;
 }
 function attemptsHtml(m) {
   const list = attemptsFor(m);

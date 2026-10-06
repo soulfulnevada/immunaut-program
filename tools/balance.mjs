@@ -354,6 +354,21 @@ console.log('\nMASTERY CHECKS');
   const good = M.rbWhatIf({ ch2: n2.ch2, ch2Plan: { design: d2 }, ch3Plan: { route: 'vax', design: { carrier: 'vector', antigen: 'core', adjuvant: 'alum', route: 'nasal', doses: 1 } } });
   const best = M.mostImportant(good);
   ob(!best || best.ch2ok, `what-if never prefers an alternative that loses the first wave (${best ? best.what : 'nothing better'})`);
+  // ...and a run that saved only the winter wave is never told to trade it for the first wave
+  let swaps = 0, checked = 0;
+  for (const wait of ['w4', 'w2']) for (const carrier of allIds(M.PARTS.carrier)) for (const antigen of allIds(M.PARTS.antigen)) for (const doses of [1, 2, 3]) {
+    const d = { carrier, antigen, adjuvant: 'alum', route: 'im', doses }, m = M.rbCh2Mission(wait, 999), s = M.simulate(d, m);
+    if (s.success || s.halted) continue;
+    for (const c3 of allIds(M.PARTS.carrier)) for (const a3 of allIds(M.PARTS.antigen)) for (const j3 of allIds(M.PARTS.adjuvant)) for (const r3 of allIds(M.PARTS.route)) {
+      const p3 = { route: 'vax', design: { carrier: c3, antigen: a3, adjuvant: j3, route: r3, doses: 3 } };
+      const w = M.rbWhatIf({ ch2: { success: false, wave: 'large', wait, escape: antigen === 'spike' }, ch2Plan: { design: d }, ch3Plan: p3 });
+      if (!w.actual.res.success) continue;
+      checked++;
+      const top = M.mostImportant(w);
+      if (top && !top.res.success) swaps++;
+    }
+  }
+  ob(checked > 0 && swaps === 0, `what-if never swaps a protected winter wave for the first wave (${checked} runs checked, ${swaps} swaps)`);
 }
 
 process.exitCode = broken ? 1 : 0;
