@@ -8,7 +8,8 @@ const between = (a, b) => html.slice(html.indexOf(a), html.indexOf(b));
 const src = ['MODEL', 'TX-MODEL', 'OUTBREAK-MODEL'].map(k => between(`// ${k}-START`, `// ${k}-END`)).join('\n');
 const M = new Function(src + `return { PARTS, MISSIONS, simulate, DRUGS, TX_MISSIONS, simulateTx, txCheckpointDay, challengeMet, CHALLENGE_TEXT,
   OUTBREAK, OB_WAVES, obCh2Mission, obCh3TxMission, obCh3VaxMission, obCarry, obResistAfter, obCommendation, obResistContained, obAfterCh2, obFinish,
-  RIVERBEND, RB_WAITS, RB_WAVES, rbCh2Mission, rbCh3Mission, rbAfterCh2, rbFinish, obMastered, obWhatIf, rbWhatIf, mostImportant };`)();
+  RIVERBEND, RB_WAITS, RB_WAVES, rbCh2Mission, rbCh3Mission, rbAfterCh2, rbFinish, obMastered, obWhatIf, rbWhatIf, mostImportant,
+  PINECREST, PC_SUSPECTS, PC_STARTS, PC_WAIT, pcTruth, pcCh2Mission, pcCh3Mission, pcCarry, pcBroadUse, pcAfterCh2, pcFinish, pcWaitCost, pcNoWait, pcWhatIf, pcOtherSuspect, obWave, untreated };`)();
 
 const starter = list => list.filter(p => p.unlock === 0).map(p => p.id);
 const every = list => list.map(p => p.id);
@@ -369,6 +370,81 @@ console.log('\nMASTERY CHECKS');
     }
   }
   ob(checked > 0 && swaps === 0, `what-if never swaps a protected winter wave for the first wave (${checked} runs checked, ${swaps} swaps)`);
+}
+
+console.log('\nPINECREST CHECKS (two suspects, the culprit picked per run)');
+{
+  const P = M.PINECREST, both = ['pine', 'lake'];
+  // the evidence never misleads: a correct reading of the camp map or the disk test names the real culprit
+  const culpritTests = ['where', 'disk'], neutral = P.tests.filter(t => !culpritTests.includes(t.field)).map(t => t.field);
+  ob(both.every(c => culpritTests.every(f => {
+    const t = P.tests.find(x => x.field === f), right = t.options.find(o => o[0] === M.pcTruth(c)[f]);
+    return right[1].includes(M.PC_SUSPECTS[c].name) && t.result(c).includes(M.PC_SUSPECTS[c].name) && !t.result(c).includes(M.PC_SUSPECTS[M.PC_SUSPECTS[c].other].name);
+  })), 'reading the camp map or the disk test correctly always names the real culprit');
+  ob(neutral.every(f => M.pcTruth('pine')[f] === M.pcTruth('lake')[f]), `the other tests (${neutral.join(', ')}) never point at either suspect`);
+
+  // the start choice: score a whole chapter 2 outcome, including what it hands chapter 3
+  const W = { small: 3, normal: 2, lingering: 1, large: 0 };
+  const score = (s, m) => { const c = M.pcCarry(s, m); return (s.success ? 10 : 0) + W[c.wave] - 4 * (c.resist.broad || 0) - s.cost / 100; };
+  const styles = []; for (const dose of ['low', 'std', 'high']) for (const freq of [1, 2, 3]) for (const dur of [5, 7, 10, 14]) styles.push({ dose, freq, dur });
+  const cp = m => M.txCheckpointDay(m), budget = P.budget - 14;
+  const tally = { broad: 0, wait: 0, guess: 0 }, wins = { broad: 0, guess: 0 }; let live = 0; const known = { pine: {}, lake: {} };
+  const deesc = { checked: 0, worse: 0 };
+  for (const st of styles) {
+    const r = { broad: 0, wait: 0, guess: 0 }; let any = false;
+    for (const c of both) {
+      const rr = { a: M.PC_SUSPECTS[c].drug, b: null, ...st };
+      const mb = M.pcCh2Mission('broad', c, budget), sb = M.simulateTx({ a: 'broad', b: null, ...st }, mb, { day: cp(mb), rx: rr });
+      const mw = M.pcCh2Mission('wait', c, budget), sw = M.simulateTx(rr, mw);
+      // a blind bet on Pine Cough, switching when the culture says otherwise
+      const mg = M.pcCh2Mission('pine', c, budget), sg = M.simulateTx({ a: 'pen', b: null, ...st }, mg, c === 'pine' ? null : { day: cp(mg), rx: rr });
+      for (const [k, s, m] of [['broad', sb, mb], ['wait', sw, mw], ['guess', sg, mg]]) { r[k] += score(s, m) / 2; if (s.success) any = true; }
+      wins.broad += sb.success ? .5 : 0; wins.guess += sg.success ? .5 : 0;
+      // with the culprit known, the right narrow drug should beat covering both or waiting
+      const mk = M.pcCh2Mission(c, c, budget), sk = M.simulateTx(rr, mk);
+      for (const [k, v] of [['narrow', score(sk, mk)], ['broad', score(sb, mb)], ['wait', score(sw, mw)]]) known[c][k] = Math.max(known[c][k] ?? -99, v);
+      // narrowing down at the culture beats a full broad course on what it leaves behind
+      const full = M.simulateTx({ a: 'broad', b: null, ...st, dur: Math.max(st.dur, 7) }, mb);
+      if (full.success) { deesc.checked++; if ((M.pcCarry(sb, mb).resist.broad || 0) >= (M.pcCarry(full, mb).resist.broad || 0)) deesc.worse++; }
+    }
+    if (!any) continue;
+    live++; tally[Object.entries(r).sort((x, y) => y[1] - x[1])[0][0]]++;
+  }
+  const share = k => tally[k] / live;
+  ob(['broad', 'wait', 'guess'].every(k => share(k) >= .15),
+    `with the culprit unknown, each start is best for 15%+ of plans (broad ${Math.round(share('broad') * 100)}%, wait ${Math.round(share('wait') * 100)}%, narrow guess ${Math.round(share('guess') * 100)}%)`);
+  ob(both.every(c => known[c].narrow > Math.max(known[c].broad, known[c].wait)),
+    `with the culprit known, the best right-drug plan beats the best broad or wait plan (${both.map(c => `${c}: ${known[c].narrow.toFixed(1)} vs ${Math.max(known[c].broad, known[c].wait).toFixed(1)}`).join(', ')})`);
+  ob(wins.guess < wins.broad, `a blind narrow guess wins less often than starting broad (${wins.guess} vs ${wins.broad} plans)`);
+  ob(deesc.checked > 0 && deesc.worse === 0, `narrowing down at the culture leaves less Broad-Spectrum resistance than a full course (${deesc.checked} plans)`);
+  const wc = M.pcWaitCost();
+  ob(wc.grow > 5 && wc.line < 1, `waiting costs something real but survivable: untreated growth ${wc.grow.toFixed(0)}x by day ${M.PC_WAIT}, ${Math.round(wc.line * 100)}% of the way to the hospital line`);
+
+  // every chapter 3 state is winnable at the funding floor, for both culprits
+  const bact = ['pen', 'tetra', 'broad', 'last'], regs = [];
+  for (const a of bact) for (const b2 of [null, ...bact]) { if (b2 && b2 <= a) continue;
+    for (const dose of ['low', 'std', 'high']) for (const freq of [1, 2, 3]) for (const dur of [3, 5, 7, 10, 14]) regs.push({ a, b: b2, dose, freq, dur }); }
+  let states = 0, stuck = [];
+  for (const c of both) for (const wave of Object.keys(M.OB_WAVES)) for (const broad of [0, .15, .45, .6]) for (const nar of [0, .15, .6]) {
+    const resist = {}; if (broad) resist.broad = broad; if (nar) resist[M.PC_SUSPECTS[c].drug] = nar;
+    const m = M.pcCh3Mission({ wave, resist }, c, P.floor); states++;
+    if (!regs.some(rx => { const s = M.simulateTx(rx, m); return s.success && s.cost <= P.floor; })) stuck.push(`${c}/${wave}/${broad}/${nar}`);
+  }
+  ob(!stuck.length, `every chapter 3 state is winnable at the $${P.floor}k floor (${states} states${stuck.length ? `; stuck: ${stuck.join(', ')}` : ''})`);
+
+  // both truths are fair: the known-culprit narrow plans win about as often for each suspect
+  const fair = both.map(c => { const m = M.pcCh2Mission(c, c, budget); return regs.filter(rx => rx.b === null && rx.a === M.PC_SUSPECTS[c].drug && M.simulateTx(rx, m).success).length; });
+  ob(Math.min(...fair) >= 5 && Math.min(...fair) / Math.max(...fair) >= .4, `both culprits are fair: ${fair[0]} winning Pine Cough plans, ${fair[1]} winning Lake Fever plans`);
+
+  // a mastered run exists for each culprit: read the evidence, go narrow, then win chapter 3 without a grant
+  for (const c of both) {
+    const run = { culprit: c, spent: { tests: 14, ch2: 0, ch3: 0 }, file: {} }, m2 = M.pcCh2Mission(c, c, budget);
+    const win2 = regs.filter(rx => rx.b === null && rx.a === M.PC_SUSPECTS[c].drug).map(rx => [rx, M.simulateTx(rx, m2)]).filter(([, s]) => s.success).sort((x, y) => x[1].cost - y[1].cost)[0];
+    const n2 = win2 && M.pcAfterCh2(run, win2[1], m2, win2[0]);
+    const left = n2 && P.budget - 14 - win2[1].cost, m3 = n2 && M.pcCh3Mission(n2.ch2, c, left);
+    const win3 = n2 && regs.some(rx => { const s = M.simulateTx(rx, m3); return s.success && s.cost <= left; });
+    ob(!!win3 && n2.grant === 0 && n2.ch2.right && M.obMastered({ ch2: n2.ch2, ch3: { success: true }, grant: n2.grant }), `Pinecrest can be mastered when the culprit is ${M.PC_SUSPECTS[c].name}`);
+  }
 }
 
 process.exitCode = broken ? 1 : 0;

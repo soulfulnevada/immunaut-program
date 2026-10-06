@@ -181,7 +181,7 @@
   .predict-res small { display: block; margin-top: 4px; color: var(--muted); }
   .fine.opt { display: flex; align-items: center; gap: 6px; cursor: pointer; }
   .ob-card { display: grid; gap: 10px; }
-  .story-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+  .story-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
   .story-card { text-align: left; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line); background: #ffffff06; display: grid; gap: 4px; }
   .story-card:hover:not(:disabled) { border-color: #4fd1ff88; }
   .story-card.on { border-color: var(--accent); background: #4fd1ff12; box-shadow: inset 0 0 0 1px var(--accent); }
@@ -191,12 +191,15 @@
   .story-card span { font-size: 12px; color: var(--accent); }
   .story-card.locked span { color: var(--muted); }
   .rb-waits { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-  .rb-wait { text-align: left; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: #ffffff06; display: grid; gap: 3px; font-size: 12px; color: #c9d5ea; }
+  .rb-wait { text-align: left; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: #ffffff06; display: grid; align-content: start; gap: 3px; font-size: 12px; color: #c9d5ea; }
   .rb-wait:hover { border-color: #4fd1ff88; }
   .rb-wait.on { border-color: var(--accent); background: #4fd1ff14; box-shadow: inset 0 0 0 1px var(--accent); }
   .rb-wait b { color: var(--text); }
   .rb-wait > b { font: 700 15px "Exo 2", sans-serif; }
   .rb-wait small { color: var(--muted); margin-bottom: 4px; }
+  .pc-bets { display: grid; gap: 4px; margin-top: 4px; }
+  .pc-bets button { text-align: left; font-size: 12px; padding: 6px 8px; }
+  .pc-bets button.on { border-color: var(--accent); background: #4fd1ff18; color: var(--text); }
   @media (max-width: 760px) { .story-cards, .rb-waits { grid-template-columns: 1fr; } }
   .ob-card h2 { margin: 0; }
   .ob-lead { margin: 0; color: #c9d5ea; }
@@ -613,7 +616,7 @@ const hill = (c, ec) => c * c / (c * c + ec * ec);
 
 // A plan can change once mid-course: `change` = { day, rx } replaces the regimen from that day on.
 const rxDrugs = rx => [rx.a, rx.b].filter(Boolean);
-const txCheckpointDay = m => m.startDay + (m.cureBelow > 1 ? 7 : 3);
+const txCheckpointDay = m => m.cpDay ?? m.startDay + (m.cureBelow > 1 ? 7 : 3);
 function txPhases(rx, m, change) {
   if (!change) return [{ rx, from: -Infinity, to: Infinity, days: () => rx.dur }];
   const done = change.day - m.startDay; // course days already behind us
@@ -718,7 +721,8 @@ function simulateTx(rx, m, change = null) {
   const drugs = ids.map(DRUG);
   const n = drugs.length, G = 1 << n;
   const doses = ids.map(id => (sched[id] || []).map(d => d.t));
-  const works = drugs.map(dr => dr.target === m.kind);
+  // a drug works if it's the right class for the bug, unless this bug naturally shrugs it off (m.ignores)
+  const works = drugs.map(dr => dr.target === m.kind && !(m.ignores || []).includes(dr.id));
   const mu = drugs.map(dr => m.mutation * (1 - dr.barrier));
   const pre = drugs.map(dr => m.preResist[dr.id] || 0);
   const conc = (j, t) => { let c = 0; for (const d of sched[ids[j]] || []) if (t >= d.t) c += d.amt * Math.exp(-Math.LN2 * (t - d.t) * 24 / drugs[j].hl); return c; };
@@ -780,7 +784,8 @@ function simulateTx(rx, m, change = null) {
   // notes judge the regimen in force at the end
   const fin = rxDrugs(finalRx).map(id => ids.indexOf(id));
   const notes = [];
-  drugs.forEach((dr, j) => { if (!works[j]) notes.push(`${dr.name} is ${dr.cls === 'Antibiotic' ? 'an antibiotic, and antibiotics do nothing to viruses' : 'an antiviral, and antivirals do nothing to bacteria'}. The patient got the side effects with none of the benefit.`); });
+  drugs.forEach((dr, j) => { if (!works[j] && dr.target === m.kind) notes.push(`${m.culpritName || m.pathogen} naturally shrugs off ${dr.name}, so it did nothing but add side effects.`); });
+  drugs.forEach((dr, j) => { if (!works[j] && dr.target !== m.kind) notes.push(`${dr.name} is ${dr.cls === 'Antibiotic' ? 'an antibiotic, and antibiotics do nothing to viruses' : 'an antiviral, and antivirals do nothing to bacteria'}. The patient got the side effects with none of the benefit.`); });
   const gappy = fin.filter(j => works[j] && !drugs[j].single && Math.exp(-Math.LN2 * 24 / finalRx.freq / drugs[j].hl) < .02 && finalRx.freq < 3).map(j => drugs[j]);
   if (hosp !== null) notes.push(`${resistDominant ? 'A resistant strain' : 'The infection'} overwhelmed the patient on day ${dayOf(hosp)}, and they were hospitalized.`);
   const relapsed = !resistDominant && works.some(Boolean) && (hosp !== null ? hosp > lastDose + .5 : final >= m.cureBelow);
@@ -824,7 +829,7 @@ function simulateTx(rx, m, change = null) {
     : resistDominant ? 'resistance' : 'short';
   // a winning plan that carried a useless drug: predicting "wrong drug" is half right
   const wrongToo = limiter === 'none' && !works.every(Boolean);
-  const bug = m.kind === 'virus' ? 'a virus' : 'bacteria';
+  const bug = drugs.some((dr, j) => !works[j] && dr.target === m.kind) ? (m.culpritName || m.pathogen) : m.kind === 'virus' ? 'a virus' : 'bacteria';
   const limiterWhy = {
     none: wrongToo ? `${useless} did nothing against ${bug}, but ${helpers} carried the plan.` : `${m.pathogen} was beaten within the limits.`,
     wrong: success ? `${useless} can't touch ${bug}. The patient's immune system won on its own.` : `${useless} can't touch ${bug}.`,
@@ -922,8 +927,8 @@ function obFieldPoints(f, truth) {
 }
 // what the player correctly knows (not just believes) about a field, e.g. whether the strain shift will surprise them
 const obKnows = (f = {}, truth) => !!f.helped || (!!f.tested && f.value === truth);
-function obCommendation(file, data = OUTBREAK) {
-  const pts = data.tests.reduce((sum, t) => sum + obFieldPoints(file[t.field] || {}, data.truth[t.field]), 0);
+function obCommendation(file, data = OUTBREAK, truth = data.truth) {
+  const pts = data.tests.reduce((sum, t) => sum + obFieldPoints(file[t.field] || {}, truth[t.field]), 0);
   return { pts, tier: pts >= 9 ? 'gold' : pts >= 7 ? 'silver' : pts >= 4 ? 'bronze' : null };
 }
 // Chapter transitions as pure functions, so the harness can check budgets, grants and medals on every route.
@@ -1002,6 +1007,115 @@ function rbFinish(run, s, m) {
   // "kept pace": the winter vaccine aimed at something the drifted strain couldn't dodge
   const medals = [s.success && 'town', !s.halted && s.escape <= .25 && 'pace', run.grant === 0 && left >= 20 && 'budget'].filter(Boolean);
   return { left, medals, tier: obCommendation(run.file, RIVERBEND).tier };
+}
+// ---- Outbreak 3: Pinecrest Camp (docs/outbreak-3-pinecrest.md). Two look-alike suspects; the culprit is picked per run.
+const PC_SUSPECTS = {
+  pine: { name: 'Pine Cough', ignores: ['tetra'], drug: 'pen', where: 'cabins', disk: 'works', other: 'lake' },
+  lake: { name: 'Lake Fever', ignores: ['pen'], drug: 'tetra', where: 'lake', disk: 'fails', other: 'pine' },
+};
+const PINECREST = {
+  id: 'pinecrest', name: 'Pinecrest Camp', budget: 150, floor: 60,
+  intro: 'A summer camp in the hills. Campers are coming down with fever and a chest infection, and the camp nurse has two look-alike suspects: Pine Cough, which penicillin cures, and Lake Fever, which shrugs penicillin off. You have $150k for the whole outbreak.',
+  teaser: 'Two look-alike bacteria at a summer camp. Treat narrow, treat broad, or wait for proof?',
+  tests: [
+    { field: 'kind', name: 'Microscope', cost: 2, question: 'What kind of microbe is it?',
+      result: 'Rod-shaped cells: a bacterium. Both suspects look exactly like this, so the microscope can\u2019t tell them apart.',
+      options: [['bacteria', 'A bacterium'], ['virus', 'A virus']] },
+    { field: 'where', name: 'Camp map', cost: 3, question: 'Where are campers getting sick?',
+      result: c => c === 'lake' ? 'The sick campers all swam at the lake, wherever they sleep. That points to Lake Fever, which lives in lake water.'
+        : 'The sick campers are spread across the cabins, lake swimmers or not. That points to Pine Cough, which spreads cabin to cabin.',
+      options: [['lake', 'Around the lake: Lake Fever'], ['cabins', 'Across the cabins: Pine Cough']] },
+    { field: 'disk', name: 'Penicillin disk test', cost: 5, question: 'Does penicillin stop it?',
+      result: c => c === 'lake' ? 'The bacteria grow right up to the penicillin disk: penicillin doesn\u2019t stop it. That\u2019s Lake Fever.'
+        : 'A wide clear ring around the penicillin disk: penicillin kills it. That\u2019s Pine Cough.',
+      options: [['works', 'Yes: Pine Cough'], ['fails', 'No: Lake Fever']] },
+    { field: 'speed', name: 'Growth curve', cost: 3, question: 'How fast does it get serious?',
+      result: 'It doubles in hours. Untreated campers would turn critical around day 5, so every day of waiting counts.',
+      options: [['fast', 'Fast: critical within a week'], ['slow', 'Slow: weeks before it gets serious']] },
+    { field: 'risk', name: 'Patient charts', cost: 1, question: 'Who is getting sick?',
+      result: 'Mostly young campers. Side effects have to stay lower than usual.',
+      options: [['healthy', 'Mostly counselors: healthy adults'], ['frail', 'Mostly young campers: lower side-effect limit']] },
+  ],
+};
+// The hidden truth for one run: the camp map and the disk test always point at the real culprit.
+const pcTruth = culprit => ({ kind: 'bacteria', where: PC_SUSPECTS[culprit].where, disk: PC_SUSPECTS[culprit].disk, speed: 'fast', risk: 'frail' });
+// The distinctive decision: how to start treatment before the culture proves which suspect it is.
+const PC_STARTS = {
+  pine: { label: 'Narrow now: Pine Cough', drugs: ['pen'] },
+  lake: { label: 'Narrow now: Lake Fever', drugs: ['tetra'] },
+  broad: { label: 'Broad now', drugs: ['broad'] },
+  wait: { label: 'Wait for the culture', drugs: null },
+};
+const PC_WAIT = 3;                                     // days a clean culture takes
+const PC_LATE = 5;                                     // a culture drawn after antibiotics started grows slower
+const PC_BROAD_CARRY = { none: 0, short: .15, full: .45, bred: .6 };
+const PC_BUG = { kind: 'bacteria', site: 'Lungs', pathogen: 'Camp fever', immune: .2, ramp: 0, mop: 1.8, mutation: 5e-7,
+  growth: 1.2, n0: 3e7, adherence: 1, startDay: 0, days: 28, cureBelow: 1, critical: 5e9, durations: [3, 5, 7, 10, 14] };
+function pcCh2Mission(start, culprit, budget) {
+  const c = PC_SUSPECTS[culprit], wait = start === 'wait';
+  return { ...PC_BUG, id: 'pc-ch2', story: 'pinecrest', obChapter: 2, outbreak: true, allParts: true, name: 'Chapter 2 · Respond', maxSide: .45, budget, reward: 0,
+    start, culprit, culpritName: c.name, ignores: c.ignores, preResist: {}, culture: !wait, allowDrugs: PC_STARTS[start].drugs,
+    startDay: wait ? PC_WAIT : 0, cpDay: wait ? undefined : PC_LATE,
+    blurb: wait ? `You waited for the culture: it\u2019s ${c.name}. Treatment starts on day ${PC_WAIT}.`
+      : `${PC_STARTS[start].label}. With drugs already in the samples, the culture comes back on day ${PC_LATE}, and you can switch drugs then.` };
+}
+function pcCh3Mission(carry, culprit, budget) {
+  const c = PC_SUSPECTS[culprit], w = OB_WAVES[carry.wave];
+  return { ...PC_BUG, id: 'pc-ch3', story: 'pinecrest', obChapter: 3, outbreak: true, allParts: true, name: 'Chapter 3 · Adapt', maxSide: .45, budget, reward: 0,
+    culprit, culpritName: c.name, pathogen: c.name, ignores: c.ignores, n0: PC_BUG.n0 * w.load, preResist: { ...carry.resist }, wave: carry.wave,
+    blurb: `A ${w.label.toLowerCase()} second wave of ${c.name}. You know the culprit now: treat it, with whatever resistance the first wave left behind.` };
+}
+// How much Broad-Spectrum chapter 2 used: none, only until the culture (narrowed at the checkpoint), or a full course.
+function pcBroadUse(s) {
+  const j = s.ids.indexOf('broad');
+  if (j < 0 || !s.doses[j].length) return 'none';
+  if (s.resistedBy[j]) return 'bred';
+  return new Set(s.doses[j].map(Math.floor)).size <= PC_LATE ? 'short' : 'full';
+}
+function pcCarry(s, m) {
+  const resist = obResistAfter(s, {}), use = pcBroadUse(s);
+  resist.broad = Math.max(resist.broad || 0, PC_BROAD_CARRY[use]);
+  if (!resist.broad) delete resist.broad;
+  return { resist, wave: obWave(s, m), broad: use };
+}
+// "Right drug, right bug": chapter 2 ended on the one narrow drug that fits the real culprit.
+const pcRightDrug = (finalRx, culprit) => rxDrugs(finalRx).length === 1 && finalRx.a === PC_SUSPECTS[culprit].drug;
+function pcAfterCh2(run, s, m, finalRx) {
+  const left = PINECREST.budget - run.spent.tests - s.cost;
+  return { ch2: { ...pcCarry(s, m), start: m.start, right: pcRightDrug(finalRx, m.culprit), success: s.success },
+    spentCh2: s.cost, grant: Math.max(0, PINECREST.floor - left) };
+}
+function pcFinish(run, s, m) {
+  const left = PINECREST.budget - run.spent.tests - run.spent.ch2 - s.cost;
+  const medals = [s.success && 'town', run.ch2.right && 'target', run.grant === 0 && left >= 20 && 'budget'].filter(Boolean);
+  return { left, medals, tier: obCommendation(run.file, PINECREST, pcTruth(run.culprit)).tier };
+}
+// What waiting costs, for the button: untreated growth over the wait, and how close that gets to the hospital line.
+function pcWaitCost() {
+  const u = untreated(pcCh2Mission('broad', 'pine', 999)), a = u.at(0).total, b = u.at(PC_WAIT).total;
+  return { grow: b / a, line: clamp((Math.log10(b) - 6) / (Math.log10(PC_BUG.critical) - 6), 0, 1) };
+}
+// The same plan started on day 0 instead of after the wait, for the debrief.
+function pcNoWait(rx, m, change) {
+  const m0 = { ...m, startDay: 0 };
+  return simulateTx(rx, m0, change ? { ...change, day: change.day - PC_WAIT } : null);
+}
+function pcWhatIf(run) {
+  const p = run.ch3Plan;
+  const ch3 = (carry, what, ch2ok) => ({ what, ch2ok, res: simulateTx(p.rx, pcCh3Mission(carry, run.culprit, 999)) });
+  const scen = [], bred = Object.keys(run.ch2.resist).length > 0;
+  if (run.ch2.wave !== 'small' || bred) scen.push(ch3({ wave: 'small', resist: {} }, 'a clean first-wave cure in chapter 2 (small second wave, no resistance left behind)', true));
+  if (run.ch2.wave !== 'small' && bred) scen.push(ch3({ ...run.ch2, wave: 'small' }, 'a smaller second wave (chapter 2 cleared cleanly), with the same resistance', true));
+  if (run.ch2.resist.broad) scen.push(ch3({ ...run.ch2, resist: { ...run.ch2.resist, broad: 0 } }, 'no Broad-Spectrum resistance left behind, with the same second wave', !!run.ch2.success));
+  return { actual: ch3(run.ch2, 'what you did', !!run.ch2.success), scen };
+}
+// Robust or lucky: the player's opening plan against the other suspect, switching to its right drug when the culture comes back.
+function pcOtherSuspect(run) {
+  const p = run.ch2Plan, other = PC_SUSPECTS[run.culprit].other, m = pcCh2Mission(run.ch2.start, other, 999);
+  if (run.ch2.start === 'wait') return null;
+  const fix = { ...p.rx, a: PC_SUSPECTS[other].drug, b: null };
+  const opening = rxDrugs(p.rx).every(id => !PC_SUSPECTS[other].ignores.includes(id));
+  return { other, opening, m, res: simulateTx(p.rx, m, opening ? null : { day: txCheckpointDay(m), rx: fix }) };
 }
 // Outbreak Mastery: both waves protected, with no emergency funding.
 const obMastered = run => !!(run.ch2 && run.ch2.success && run.ch3 && run.ch3.success && run.grant === 0);
@@ -1750,10 +1864,17 @@ function obState(id = storyId) {
 const obRun = () => obState().run;
 const obSpent = run => run.spent.tests + run.spent.ch2 + run.spent.ch3;
 const obLeft = run => SD().budget - obSpent(run);
-const storyUnlocked = id => id === 'harbor' || obState('harbor').runs > 0;
+// each story unlocks after finishing the one before it once
+const storyUnlocked = id => !STORIES[id].after || obState(STORIES[id].after).runs > 0;
+// the truth a run is graded against, and its short and lab-tech texts (some stories pick the culprit per run)
+const obTruth = (run = obRun()) => ST().truthOf ? ST().truthOf(run) : SD().truth;
+const obShort = (field, run = obRun()) => (typeof ST().short === 'function' ? ST().short(run) : ST().short)[field];
+const obResult = (t, run = obRun()) => typeof t.result === 'function' ? t.result(run.culprit) : t.result;
 function obStart() {
   const st = obState();
-  st.run = { chapter: 1, tests: [], file: {}, spent: { tests: 0, ch2: 0, ch3: 0 }, grant: 0, ch2: null, route: null, wait: null, ch3: null, timeline: [] };
+  st.run = { chapter: 1, tests: [], file: {}, spent: { tests: 0, ch2: 0, ch3: 0 }, grant: 0, ch2: null, route: null, wait: null, ch3: null, timeline: [], no: st.runs + 1 };
+  // a story whose culprit varies picks it once per run: retries, replays and reloads keep it
+  if (ST().pickCulprit) st.run.culprit = ST().pickCulprit();
   st.snaps = { 1: clone(st.run) };
   persist();
 }
@@ -1769,7 +1890,7 @@ function obReplay(n) {
 const obOption = (t, v) => t.options.find(o => o[0] === v)[1];
 function obFileValue(field) {
   const f = obRun().file[field] || {}, t = SD().tests.find(x => x.field === field);
-  if (f.helped) return `<span class="ob-lab">Lab result (explained by the lab tech):</span> ${ST().short[field]}`;
+  if (f.helped) return `<span class="ob-lab">Lab result (explained by the lab tech):</span> ${obShort(field)}`;
   if (f.tested && f.value) return `<span class="ob-read">Your reading of the ${t.name.toLowerCase()}:</span> ${obOption(t, f.value)}`;
   if (f.tested) return '<span class="ob-none">Tested, but you didn’t interpret it</span>';
   if (f.value) return `<span class="ob-guess">Your assessment:</span> ${obOption(t, f.value)} (untested)`;
@@ -1862,7 +1983,8 @@ function obMapHtml(run) {
       <rect x="0" y="0" width="122" height="192" fill="#123a5c"/>
       <text x="60" y="186" class="ob-map-water">${mp.water}</text>
       ${mp.water === 'Harbor' ? '<g stroke="#3d6f99" stroke-width="5"><line x1="80" y1="45" x2="122" y2="45"/><line x1="70" y1="95" x2="122" y2="95"/><line x1="85" y1="145" x2="122" y2="145"/></g>'
-        : '<path d="M40 0 C 90 50, 20 110, 70 192" stroke="#3d6f99" stroke-width="10" fill="none"/>'}
+        : mp.water === 'River' ? '<path d="M40 0 C 90 50, 20 110, 70 192" stroke="#3d6f99" stroke-width="10" fill="none"/>'
+        : '<g stroke="#8a6a44" stroke-width="5"><line x1="78" y1="80" x2="122" y2="80"/><line x1="84" y1="74" x2="84" y2="86"/></g>'}
       ${shapes}
       <g transform="translate(270,120)"><rect x="-9" y="-9" width="18" height="18" rx="3" fill="#f2f5fa"/><path d="M-2 -6h4v4h4v4h-4v4h-4v-4h-4v-4h4z" fill="#d9404f"/><title>Clinic</title></g>
       <text x="270" y="102" class="ob-map-small">Clinic</text>
@@ -1882,11 +2004,11 @@ function obCh1Html(run) {
     const done = run.tests.includes(t.field), f = run.file[t.field] || {};
     if (!done) return `<div class="ob-test"><div><b>${t.name}</b> <small>${t.question}</small></div><button class="ghost" data-test="${t.field}">Run · $${t.cost}k</button></div>`;
     const reading = f.helped
-      ? `<p class="ob-tech"><b>Lab tech:</b> ${t.result}</p>`
+      ? `<p class="ob-tech"><b>Lab tech:</b> ${obResult(t, run)}</p>`
       : `<div class="ob-read-row"><span>What does this show?</span>${t.options.map(([v, l]) => `<button class="ghost ${f.value === v ? 'on' : ''}" data-read="${t.field}" data-v="${v}">${l}</button>`).join('')}
          <button class="ghost ob-help" data-help="${t.field}" title="The tech explains it, but the field only scores 1 point instead of 2">Ask the lab tech (−1 point)</button></div>`;
     return `<div class="ob-test done"><div><b>${t.name}</b> <small>${t.question} · paid $${t.cost}k</small>
-      <div class="ob-evidence">${ST().evidence[t.field]()}</div>${reading}</div></div>`;
+      <div class="ob-evidence">${ST().evidence[t.field](run)}</div>${reading}</div></div>`;
   }).join('');
   const untested = SD().tests.filter(t => !run.tests.includes(t.field));
   const fields = untested.map(t => {
@@ -1923,19 +2045,20 @@ function obMasteryHtml(run) {
       : run.ch3.success ? '<b>Your path held up:</b> none of the alternative histories we replayed would have done better with your chapter 3 plan.'
       : '<b>Chapter 3’s own plan mattered most:</b> none of the alternative histories would have rescued it. A different chapter 3 design was needed.';
   }
-  return `<div class="ob-mastery ${ok ? 'won' : ''}"><b>${ok ? '⭐ Outbreak mastered!' : '⭐ Not mastered yet'}</b><small>${MASTERY_GOAL} ${status}</small>${insight ? `<p>${insight}</p>` : ''}</div>`;
+  const robust = ST().robust ? ST().robust(run) : '';
+  return `<div class="ob-mastery ${ok ? 'won' : ''}"><b>${ok ? '⭐ Outbreak mastered!' : '⭐ Not mastered yet'}</b><small>${MASTERY_GOAL} ${status}</small>${insight ? `<p>${insight}</p>` : ''}${robust ? `<p>${robust}</p>` : ''}</div>`;
 }
 function obReportHtml(run) {
   const st = obState(), left = obLeft(run);
   const medal = ([icon, name, ok, why]) => `<div class="ob-medal ${ok ? 'won' : ''}"><span>${icon}</span><div><b>${name}</b><small>${why}</small></div><em>${ok ? 'Earned' : 'Missed'}</em></div>`;
-  const com = obCommendation(run.file, SD());
+  const com = obCommendation(run.file, SD(), obTruth(run));
   const fileRows = SD().tests.map(t => {
-    const f = run.file[t.field] || {}, truth = SD().truth[t.field], pts = obFieldPoints(f, truth);
+    const f = run.file[t.field] || {}, truth = obTruth(run)[t.field], pts = obFieldPoints(f, truth);
     const had = f.helped ? 'Lab tech explained it' : f.tested ? (f.value ? `You read it as: ${obOption(t, f.value)}` : 'Tested, not interpreted') : f.value ? `Guessed: ${obOption(t, f.value)}` : 'Left blank';
     const note = f.helped ? 'Reading it yourself would score 2'
-      : f.tested ? (pts ? '' : `How to read it: ${t.result}`)
+      : f.tested ? (pts ? '' : `How to read it: ${obResult(t, run)}`)
       : `The ${t.name.toLowerCase()} ($${t.cost}k) would have told you`;
-    return `<tr><td>${ST().field[t.field]}</td><td>${had}</td><td>${ST().short[t.field]}</td><td class="${pts ? 'ok' : 'no'}">${pts}</td><td>${note}</td></tr>`;
+    return `<tr><td>${ST().field[t.field]}</td><td>${had}</td><td>${obShort(t.field, run)}</td><td class="${pts ? 'ok' : 'no'}">${pts}</td><td>${note}</td></tr>`;
   }).join('');
   const medals = [...ST().medals(run, left),
     ['📋', 'Case-file commendation', !!com.tier, `${com.tier ? OB_TIER[com.tier] : 'None'}: ${com.pts} of 10 points (2 for each test you read correctly, 1 for each test the lab tech explained or each right guess).`]];
@@ -1953,7 +2076,7 @@ function obReportHtml(run) {
 function obStoryCards() {
   return `<div class="story-cards">${Object.keys(STORIES).map(id => {
     const S = STORIES[id], st = obState(id), locked = !storyUnlocked(id);
-    const status = locked ? '🔒 Finish Harbor Fever to unlock' : st.run ? (st.run.chapter === 4 ? 'Run finished: see the town report' : `In progress: chapter ${st.run.chapter}`)
+    const status = locked ? `🔒 Finish ${STORIES[S.after].data.name} to unlock` : st.run ? (st.run.chapter === 4 ? 'Run finished: see the town report' : `In progress: chapter ${st.run.chapter}`)
       : st.runs ? `Best: ${st.best.medals.map(x => S.icons[x]).join(' ') || 'no medals yet'}` : 'Not started';
     return `<button class="story-card ${storyId === id ? 'on' : ''} ${locked ? 'locked' : ''}" data-story="${id}" ${locked ? 'disabled' : ''}>
       <b>${S.icon} ${S.data.name}${st.best.mastered ? ' <em class="mastered">⭐ Mastered</em>' : ''}</b><small>${S.teaser}</small><span>${status}</span></button>`;
@@ -1981,7 +2104,7 @@ function renderOutbreak() {
     persist(); renderOutbreak();
   };
   for (const b of list.querySelectorAll('[data-read]')) b.onclick = () => { run.file[b.dataset.read] = { tested: true, value: b.dataset.v }; persist(); renderOutbreak(); };
-  for (const b of list.querySelectorAll('[data-help]')) b.onclick = () => { run.file[b.dataset.help] = { tested: true, helped: true, value: SD().truth[b.dataset.help] }; persist(); renderOutbreak(); };
+  for (const b of list.querySelectorAll('[data-help]')) b.onclick = () => { run.file[b.dataset.help] = { tested: true, helped: true, value: obTruth(run)[b.dataset.help] }; persist(); renderOutbreak(); };
   for (const sel of list.querySelectorAll('[data-field]')) sel.onchange = () => { run.file[sel.dataset.field] = sel.value ? { value: sel.value } : {}; persist(); };
   if ($('ob-file')) $('ob-file').onclick = () => {
     const ran = SD().tests.filter(t => run.tests.includes(t.field)), skipped = SD().tests.filter(t => !run.tests.includes(t.field));
@@ -2127,7 +2250,7 @@ const RB_OUTCOME = {
   large: 'The town missed its protection goal',
 };
 const RIVER = {
-  data: RIVERBEND, icon: '🌊', whatIf: run => rbWhatIf(run), teaser: RIVERBEND.teaser,
+  data: RIVERBEND, icon: '🌊', after: 'harbor', whatIf: run => rbWhatIf(run), teaser: RIVERBEND.teaser,
   fine: 'There are no drugs in this story: vaccines only. Every vaccine part is unlocked; budget and biology are the limits.',
   ch1Lead: 'Swabs from the first flu patients just arrived.',
   field: { kind: 'What it is', drift: 'Surface changes', spread: 'Case growth', risk: 'Patients', core: 'Stable core' },
@@ -2201,7 +2324,180 @@ const RIVER = {
       <button class="primary" id="ob-go">Open the vaccine lab ▶</button>`;
   },
 };
-const STORIES = { harbor: HARBOR, riverbend: RIVER };
+// ---- Pinecrest Camp: two look-alike suspects; narrow, broad, or wait for the culture
+const PC_EVIDENCE = {
+  kind: OB_EVIDENCE.kind,
+  speed: OB_EVIDENCE.speed,
+  // where sick campers were when they fell ill: clustered at the lake beach, or one or two in every cabin
+  where: run => {
+    const lake = run.culprit === 'lake';
+    const cabins = [[150, 30], [195, 30], [240, 30], [150, 80], [195, 80], [240, 80]];
+    const well = [[160, 42], [205, 38], [250, 44], [158, 92], [212, 88], [252, 94], [174, 40], [228, 90], [96, 112], [60, 118]];
+    const sick = lake ? [[84, 92], [92, 100], [78, 104], [100, 94], [88, 110], [104, 106], [72, 96], [96, 116]]
+      : [[164, 38], [210, 44], [246, 36], [166, 90], [200, 94], [244, 86], [178, 46], [232, 92]];
+    return `<svg viewBox="0 0 300 150"><rect x="0" y="0" width="300" height="150" rx="8" fill="#1d2a22"/>
+      <ellipse cx="60" cy="70" rx="52" ry="42" fill="#1f4f78"/><text x="60" y="66" class="ev-t">Lake</text><rect x="70" y="100" width="40" height="22" rx="6" fill="#8a7a55" opacity=".6"/><text x="90" y="138" class="ev-t">beach</text>
+      ${cabins.map(([x, y]) => `<rect x="${x}" y="${y}" width="36" height="26" rx="3" fill="#5b4a36"/>`).join('')}<text x="213" y="130" class="ev-t">Cabins</text>
+      ${well.map(([x, y]) => `<circle cx="${x}" cy="${y}" r="3.5" fill="#9aa7bd"/>`).join('')}
+      ${sick.map(([x, y]) => `<circle cx="${x}" cy="${y}" r="4.5" fill="#ff5d6c"/>`).join('')}</svg>
+      <div class="ev-legend">Where each camper was on the afternoon they fell ill. Red: sick. Grey: healthy campers, for comparison.</div>`;
+  },
+  // a dish coated with the bacteria and a penicillin disk: a clear ring means penicillin stops them
+  disk: run => {
+    const ring = run.culprit === 'pine';
+    return `<svg viewBox="0 0 300 150"><circle cx="85" cy="75" r="66" fill="#c9b36a"/>
+      ${ring ? '<circle cx="85" cy="75" r="34" fill="#e9eef5"/>' : ''}
+      <circle cx="85" cy="75" r="9" fill="#fff" stroke="#999"/><text x="85" y="79" class="ev-t dark">P</text>
+      <circle cx="85" cy="75" r="66" fill="none" stroke="#56627a" stroke-width="5"/>
+      <text x="172" y="40" class="ev-t l">A dish coated with</text><text x="172" y="56" class="ev-t l">bacteria from a camper.</text>
+      <text x="172" y="84" class="ev-t l">P: a paper disk</text><text x="172" y="100" class="ev-t l">soaked in penicillin.</text></svg>
+      <div class="ev-legend">After a day, the bacteria cover the dish wherever they can grow. Where a drug stops them, the dish stays clear.</div>`;
+  },
+  risk: () => `<table class="ev-table"><tr><th>Patient</th><th>Age</th><th>Cabin</th></tr>
+    <tr><td>Bed 1</td><td>9</td><td>Bluebird</td></tr><tr><td>Bed 2</td><td>11</td><td>Fox</td></tr>
+    <tr><td>Bed 3</td><td>8</td><td>Otter</td></tr><tr><td>Bed 4</td><td>10</td><td>Bluebird</td></tr></table>`,
+};
+const PC_OUTCOME = {
+  small: 'The first wave was cleared cleanly',
+  normal: 'The first wave was cleared, but harsh side effects sent campers home sick',
+  lingering: 'The first wave was never fully cleared',
+  large: 'Campers ended up in the hospital',
+};
+const PC_BROAD_TEXT = {
+  none: '<b>You never used Broad-Spectrum</b> → it\u2019s as strong as ever for the second wave.',
+  short: '<b>You came off Broad-Spectrum when the culture came back</b> → only 15% of the second wave resists it.',
+  full: '<b>You kept Broad-Spectrum going past the culture</b> → 45% of the second wave resists it.',
+  bred: '<b>Resistant bacteria multiplied while you used Broad-Spectrum</b> → 60% of the second wave resists it.',
+};
+const PINE = {
+  data: PINECREST, icon: '🏕️', after: 'riverbend', whatIf: run => pcWhatIf(run), teaser: PINECREST.teaser,
+  fine: 'Every antibiotic is unlocked here. The culprit is picked at random for each new run and stays the same through retries and replays.',
+  ch1Lead: 'Swabs from the sick campers just arrived.',
+  pickCulprit: () => Math.random() < .5 ? 'pine' : 'lake',
+  truthOf: run => pcTruth(run.culprit),
+  field: { kind: 'What it is', where: 'Where they got sick', disk: 'Penicillin', speed: 'How fast', risk: 'Patients' },
+  short: run => {
+    const lake = run.culprit === 'lake';
+    return { kind: 'A bacterium (both suspects look alike)', where: lake ? 'Around the lake: Lake Fever' : 'Across the cabins: Pine Cough',
+      disk: lake ? 'Penicillin fails: Lake Fever' : 'Penicillin stops it: Pine Cough', speed: 'Critical around day 5', risk: 'Young campers: lower side-effect limit' };
+  },
+  icons: { town: '🏥', target: '🎯', budget: '💰' },
+  evidence: PC_EVIDENCE,
+  map: { water: 'Lake', next: 'second wave', spread: ['dining', 'cabins', 'beach', 'trails'], reach: { small: 1, normal: 2, lingering: 3, large: 4 },
+    names: { dining: 'Dining hall', cabins: 'Cabins', beach: 'Beach', trails: 'Trails' },
+    first: { heavy: ['dining'], sick: ['cabins', 'beach'], caption: 'The first wave: campers are falling sick all over camp, and the infirmary is full.' } },
+  mission(run) {
+    const m = run.chapter === 2 ? pcCh2Mission(run.wait, run.culprit, obLeft(run)) : pcCh3Mission(run.ch2, run.culprit, obLeft(run) + run.grant);
+    m.runNo = run.no;
+    return m;
+  },
+  briefRows(run, m) {
+    if (run.chapter === 2) {
+      const wc = pcWaitCost();
+      return `<div><span>Start</span><span>${PC_STARTS[m.start].label}</span></div>`
+        + `<div><span>Culture</span><span>${m.culture ? `Results on day ${PC_LATE} (antibiotics in the samples slow it down)` : `Confirmed on day ${PC_WAIT}: ${m.culpritName}`}</span></div>`
+        + (m.culture ? '' : `<div><span>Treatment starts</span><span class="warn">Day ${PC_WAIT}: untreated, the infection grows about ${Math.round(wc.grow)}× while you wait</span></div>`);
+    }
+    if (run.chapter === 3) return `<div><span>Culprit</span><span>${m.culpritName}: ${DRUG(m.ignores[0]).name} can\u2019t touch it</span></div>`
+      + `<div><span>Second wave</span><span>${OB_WAVES[run.ch2.wave].label}: ${OB_WAVES[run.ch2.wave].load === 1 ? 'the same size as the first' : `${OB_WAVES[run.ch2.wave].load}× the first wave\u2019s size`}</span></div>`
+      + (Object.keys(run.ch2.resist).length ? `<div><span>Left behind</span><span>${Object.entries(run.ch2.resist).map(([id, r]) => `${pct(r)} resist ${DRUG(id).name}`).join(', ')}</span></div>` : '');
+    return '';
+  },
+  commit2(run, m, s) {
+    const finalRx = trial.changeRx || trial.rx, next = pcAfterCh2(run, s, m, finalRx);
+    run.spent.ch2 = next.spentCh2; run.ch2 = next.ch2; run.grant = next.grant; run.route = 'tx'; run.ch2Plan = { rx: { ...trial.rx } };
+    run.timeline.push(m.start === 'wait' ? `Ch 2: waited for the culture (${m.culpritName}), then started on day ${PC_WAIT} with ${rxText(trial.rx)}.`
+      : m.start === 'broad' ? `Ch 2: started broad, on ${rxText(trial.rx)}.`
+      : `Ch 2: bet on ${PC_SUSPECTS[m.start].name} and started on ${rxText(trial.rx)}.`);
+    // a course that ends on the checkpoint day means the player stopped treatment there
+    const stopped = trial.changeRx && trial.changeRx.dur <= trial.changeDay - m.startDay;
+    if (trial.changeRx) run.timeline.push(`Ch 2, day ${trial.changeDay}: the culture named ${m.culpritName}; ${stopped ? 'you stopped treatment, as the infection was already gone' : `switched to ${rxText(trial.changeRx)}`}.`);
+    else if (m.culture && trial.checkpointDone) run.timeline.push(`Ch 2, day ${PC_LATE}: the culture named ${m.culpritName}; you kept the plan.`);
+    run.timeline.push(`Ch 2 result: ${PC_OUTCOME[next.ch2.wave].toLowerCase()}. The second wave will be ${OB_WAVES[next.ch2.wave].label.toLowerCase()}.`);
+  },
+  commit3(run, m, s) {
+    const fin = pcFinish(run, s, m), outcome = txOutcome(s, m).text;
+    run.spent.ch3 = s.cost;
+    run.ch3Plan = { route: 'tx', rx: { ...trial.rx } };
+    run.ch3 = { success: s.success, outcome };
+    run.timeline.push(`Ch 3: treated the second wave with ${rxText(trial.rx)}.`);
+    if (trial.changeRx) run.timeline.push(`Ch 3, day ${trial.changeDay}: switched to ${rxText(trial.changeRx)}.`);
+    run.timeline.push(`Ch 3 result: ${outcome}.`);
+    return fin;
+  },
+  consequence(run) {
+    const c = run.ch2, w = OB_WAVES[c.wave], sus = PC_SUSPECTS[run.culprit], lines = [];
+    lines.push(`<li><b>${PC_OUTCOME[c.wave]}</b> → a <b>${w.label.toLowerCase()}</b> second wave, ${w.load === 1 ? 'the same size as the first' : `${w.load}× the first wave\u2019s size`}.${c.wave === 'small' ? ' That\u2019s the best case.' : ' <span class="ob-best">A clean cure would have meant a small wave, the same size as the first.</span>'}</li>`);
+    lines.push(`<li>${PC_BROAD_TEXT[c.broad]}</li>`);
+    for (const id of Object.keys(c.resist).filter(id => id !== 'broad')) lines.push(`<li><b>${DRUG(id).name}: ${pct(c.resist[id])} resistant</b>, because resistant bacteria survived while you used it.</li>`);
+    lines.push(c.right ? `<li><b>🎯 You finished on ${DRUG(sus.drug).name}</b>, the one narrow drug that fits ${sus.name}.</li>`
+      : `<li><b>You didn\u2019t finish on ${DRUG(sus.drug).name} alone</b>, the narrow drug that fits ${sus.name}.</li>`);
+    lines.push(obMoneyLine(run, 'treatment'));
+    return `<div class="ob-conseq"><h3 class="sub">What chapter 2 set up</h3><ul>${lines.join('')}</ul></div>`;
+  },
+  medals(run, left) {
+    const sus = PC_SUSPECTS[run.culprit];
+    return [
+      ['🏥', 'Camp protected', run.medals.includes('town'), run.ch3.success ? `Chapter 3: ${run.ch3.outcome}.` : `Chapter 3 fell short: ${run.ch3.outcome}.`],
+      ['🎯', 'Right drug, right bug', run.medals.includes('target'), run.ch2.right ? `Chapter 2 finished on ${DRUG(sus.drug).name}, the narrow drug that fits ${sus.name}.` : `Chapter 2 didn\u2019t finish on ${DRUG(sus.drug).name} alone, the narrow drug that fits ${sus.name}.`],
+      ['💰', 'Budget left', run.medals.includes('budget'), run.grant ? `You needed a ${money(run.grant)} emergency grant.` : `${money(left)} left ($20k needed).`],
+    ];
+  },
+  // robust or lucky: how the opening choice would have fared against the other suspect
+  robust(run) {
+    if (!run.ch2Plan) return '';
+    const sus = PC_SUSPECTS[run.culprit], start = run.ch2.start;
+    if (start === 'wait') return '<b>Robust start:</b> you waited for proof, so the culprit couldn\u2019t surprise you.';
+    const t = pcTruth(run.culprit), knew = obKnows(run.file.where, t.where) || obKnows(run.file.disk, t.disk);
+    if (start === 'broad') return `<b>Robust start:</b> Broad-Spectrum covered both suspects, so your opening worked whichever one it was.${knew ? ` Your case file already named ${sus.name}, though, so going narrow on ${DRUG(sus.drug).name} would have been just as safe, without the Broad-Spectrum resistance.` : ''}`;
+    if (start !== run.culprit) return '';
+    if (knew) return `<b>Evidence-based start:</b> your case file named ${sus.name}, and you went narrow on it. That wasn\u2019t luck.`;
+    const o = pcOtherSuspect(run);
+    return `<b>Lucky start:</b> you bet on ${sus.name} without proof from the camp map or the disk test, and it was right. If it had been ${PC_SUSPECTS[o.other].name}, your opening drug would have done nothing until the culture came back on day ${PC_LATE}. Even switching then, chapter 2 would have ended: <b>${txOutcome(o.res, o.m).text.toLowerCase()}</b>.`;
+  },
+  // the debrief names what waiting cost
+  resultNote(m, s) {
+    if (m.story !== 'pinecrest' || m.start !== 'wait') return '';
+    const alt = pcNoWait(trial.rx, m, trial.changeRx ? { day: trial.changeDay, rx: trial.changeRx } : null), a = txOutcome(alt, m), y = txOutcome(s, m);
+    const same = a.text === y.text;
+    return `The ${PC_WAIT}-day wait let the infection grow about ${Math.round(pcWaitCost().grow)}× before treatment began. The same plan started on day 0 would have ended: ${a.text.toLowerCase()}${same ? ', the same as yours, so the wait cost you nothing this time' : ` (yours: ${y.text.toLowerCase()})`}.`;
+  },
+  ch2Html(run) {
+    const wc = pcWaitCost(), narrowOn = run.wait === 'pine' || run.wait === 'lake';
+    const bets = ['pine', 'lake'].map(k => `<button class="ghost ${run.wait === k ? 'on' : ''}" data-wait="${k}">Bet on ${PC_SUSPECTS[k].name} · ${DRUG(PC_SUSPECTS[k].drug).name}</button>`).join('');
+    return `<h3 class="sub">Chapter 2 · Respond</h3>
+      <p class="ob-lead">Campers are filling the infirmary. A culture would prove which suspect it is, but it takes ${PC_WAIT} days, and ${PC_LATE} once antibiotics are in the samples. Treat now on your evidence, cover both suspects, or wait for proof? Your case file goes with you, exactly as you filed it.</p>
+      <div class="conds ob-file">${obFileRows()}</div>
+      <div class="rb-waits">
+        <div class="rb-wait ${narrowOn ? 'on' : ''}"><b>Narrow now</b><small>Bet on one suspect from day 0</small>
+          <span>Cheap and gentle, and no Broad-Spectrum resistance</span>
+          <span class="warn">If you bet wrong, the drug does nothing until the culture comes back on day ${PC_LATE}</span>
+          <div class="pc-bets">${bets}</div></div>
+        <button class="rb-wait ${run.wait === 'broad' ? 'on' : ''}" data-wait="broad"><b>Broad now</b><small>Broad-Spectrum from day 0</small>
+          <span>Covers both suspects, whichever it is</span>
+          <span class="warn">More side effects and cost, and it leaves Broad-Spectrum resistance for the second wave (less if you narrow down when the culture comes back on day ${PC_LATE})</span></button>
+        <button class="rb-wait ${run.wait === 'wait' ? 'on' : ''}" data-wait="wait"><b>Wait for the culture</b><small>Proof on day ${PC_WAIT}, then the right drug</small>
+          <span>No guessing and no Broad-Spectrum</span>
+          <span class="warn">No antibiotics for ${PC_WAIT} days: untreated campers carry about ${Math.round(wc.grow)}× more bacteria by then</span>
+          ${bar(wc.line, 'var(--bad)')}<span>The sickest get ${pct(wc.line)} of the way to the hospital line</span></button>
+      </div>
+      <p class="fine">Hint: the camp map and the penicillin disk test each point straight at the culprit, if you read them right.</p>
+      <div class="ob-budget">Outbreak budget left: <b>${money(obLeft(run))}</b></div>
+      ${run.wait ? `<button class="primary" id="ob-go">Open the clinic: ${PC_STARTS[run.wait].label} ▶</button>` : '<p class="fine">Pick how to start treatment to open the clinic.</p>'}`;
+  },
+  ch3Html(run) {
+    const w = OB_WAVES[run.ch2.wave], sus = PC_SUSPECTS[run.culprit];
+    return `<h3 class="sub">Chapter 3 · Adapt</h3>
+      <p class="ob-lead">Weeks later, a second wave of ${sus.name}. It\u2019s <b>${w.label.toLowerCase()}</b>, because of how chapter 2 ended. You know the culprit now: design the treatment.</p>
+      ${this.consequence(run)}
+      <div class="conds ob-file">
+        <div><span>Culprit</span><span>${sus.name}: ${DRUG(sus.drug).name} and Broad-Spectrum work on it; ${DRUG(sus.ignores[0]).name} doesn\u2019t</span></div>
+        <div><span>Budget</span><span>${money(obLeft(run))}${run.grant ? ` + ${money(run.grant)} emergency grant` : ''}</span></div>
+      </div>
+      <button class="primary" id="ob-go">Open the clinic ▶</button>`;
+  },
+};
+const STORIES = { harbor: HARBOR, riverbend: RIVER, pinecrest: PINE };
 
 // ---------- sandbox ----------
 const SANDBOX_DEFAULT = { name: 'Pathogen Z', kind: 'virus', site: 'Lungs', speed: 'medium', severity: 'serious', mutation: 'normal', course: 'acute', resist: 'none', patient: 'healthy', cold: 'yes' };
@@ -2292,8 +2588,10 @@ function tryUnlock(p) {
   partInfo(p, 'Researched! Now available in every mission.');
   return true;
 }
+const drugAllowed = id => !mission?.allowDrugs || mission.allowDrugs.includes(id);
 function drugCard(dr, slot) {
   const un = isUnlocked(dr), on = rx[slot] === dr.id, afford = save.science >= dr.unlock;
+  if (!drugAllowed(dr.id)) return `<button class="card locked" data-slot="${slot}" data-id="${dr.id}"><b>${dr.name}</b><small>Not in this start</small></button>`;
   const sub = un ? (dr.single ? `$${dr.cost}k, one infusion` : `$${dr.cost}k / dose`) : `🔒 Research: ${dr.unlock} ⚗`;
   return `<button class="card ${on ? 'on' : ''} ${un ? '' : 'locked'} ${!un && afford ? 'afford' : ''}" data-slot="${slot}" data-id="${dr.id}"><b>${dr.name}</b><small>${sub}</small></button>`;
 }
@@ -2303,7 +2601,8 @@ function optRow(title, key, opts) {
 function renderTxLab() {
   const m = mission;
   if (!isUnlocked(DRUG(rx.a))) rx.a = 'pen';
-  if (rx.b && (!isUnlocked(DRUG(rx.b)) || rx.b === rx.a)) rx.b = null;
+  if (!drugAllowed(rx.a)) rx.a = m.allowDrugs[0];
+  if (rx.b && (!isUnlocked(DRUG(rx.b)) || rx.b === rx.a || !drugAllowed(rx.b))) rx.b = null;
   const anti = DRUGS.filter(d => d.cls === 'Antibiotic'), vir = DRUGS.filter(d => d.cls === 'Antiviral');
   const singleOnly = [rx.a, rx.b].filter(Boolean).every(id => DRUG(id).single);
   let html = `<h3>Antibiotics</h3><div class="cards">${anti.map(d => drugCard(d, 'a')).join('')}</div>`;
@@ -2319,6 +2618,7 @@ function renderTxLab() {
     const dr = b.dataset.id ? DRUG(b.dataset.id) : null;
     if (dr) b.onmouseenter = () => partInfo(dr);
     b.onclick = () => {
+      if (dr && !drugAllowed(dr.id)) { partInfo(dr, `Your start ("${PC_STARTS[m.start].label}") opens with ${m.allowDrugs.map(id => DRUG(id).name).join(' or ')} only. When the culture comes back on day ${PC_LATE}, the checkpoint lets you switch to any drug.`); return; }
       if (dr && !tryUnlock(dr)) return;
       rx[b.dataset.slot] = dr ? dr.id : null;
       if (rx.b === rx.a) rx.b = null;
@@ -2678,6 +2978,10 @@ function startTxTrial() {
   const ev = [{ day: m.startDay, fn: () => log(m.startDay, `Treatment starts: ${rxText(rx)}.`) }];
   sim.drugs.forEach((d, j) => { if (!sim.works[j]) ev.push({ day: m.startDay + 1.5, fn: () => log(m.startDay + 1.5, `${d.name} doesn't seem to be doing anything...`, 'warn') }); });
   if (m.adherence < 1) ev.push({ day: m.startDay + 2, fn: () => log(m.startDay + 2, 'Pill count is low: the patient has been skipping doses.', 'warn') });
+  if (m.culture) {
+    ev.push({ day: 0, fn: () => log(0, `Culture sent to the lab. With antibiotics already in the samples, it will take until day ${txCheckpointDay(m)}.`) });
+    ev.push({ day: txCheckpointDay(m) - .01, fn: () => log(txCheckpointDay(m), `Culture result: it's ${m.culpritName}.`, 'good') });
+  } else if (m.story === 'pinecrest' && m.obChapter === 2) ev.push({ day: 0, fn: () => log(0, `Waiting for the culture. Campers get no antibiotics until day ${m.startDay}.`, 'warn') });
   trial.events = ev.sort((a, b) => a.day - b.day);
   setupTrialHud(sim, 'Patient vitals', [[m.kind === 'virus' ? '#e05cff' : '#5be38f', `Susceptible ${m.kind === 'virus' ? 'virus' : 'bacteria'}`], ['#ff8c2a', 'Resistant'], ['#4fd1ff', 'Drug level'], ['#ff5d6c', 'Hospital line']]);
   setKey(['drug', m.kind === 'virus' ? 'virus' : 'bacteria', 'resistant', 'bcell', 'tcell']);
@@ -2695,6 +2999,15 @@ function txEvents(h) {
   if (!f.clear && T > m.startDay && h.total < m.cureBelow) { f.clear = true; log(T, m.cureBelow > 1 ? `${m.pathogen} is now undetectable.` : `No ${m.pathogen} detected. The infection is gone.`, 'good'); }
   if (!f.hosp && s.hosp !== null && T >= s.hosp) { f.hosp = true; log(T, 'PATIENT HOSPITALIZED.', 'bad'); }
 }
+// Pinecrest: the culture comes back at the checkpoint and names the culprit, so the player can narrow down or switch.
+function cultureHtml(m, plan, cleared) {
+  const c = PC_SUSPECTS[m.culprit], ok = rxDrugs(plan).filter(id => !c.ignores.includes(id)), useless = rxDrugs(plan).filter(id => c.ignores.includes(id));
+  const advice = useless.length && !ok.length ? `So far your treatment has done nothing. Switch now: ${DRUG(c.drug).name} is the narrow drug that fits.`
+    : cleared && ok.includes('broad') ? `The infection is already gone, so you can stop Broad-Spectrum today, or switch to ${DRUG(c.drug).name} to finish the course on the right narrow drug (that earns the 🎯 medal).`
+    : ok.includes('broad') && rxDrugs(plan).length === 1 ? `Broad-Spectrum is working. You can narrow down to ${DRUG(c.drug).name} now to stop breeding Broad-Spectrum resistance.`
+    : `${DRUG(c.drug).name} is the right narrow drug for it.`;
+  return `<div class="cp-twist"><b>Culture result</b>It\u2019s <strong>${c.name}</strong>, which naturally shrugs off ${DRUG(c.ignores[0]).name}. ${advice}</div>`;
+}
 function txCheckpoint() {
   const s = trial.sim, m = trial.mission, snap = s.snap, day = snap.day;
   const elapsed = day - m.startDay;
@@ -2704,6 +3017,8 @@ function txCheckpoint() {
   const tests = s.ids.map((id, j) => `<div><small>Resist ${DRUG(id).name}</small><b class="${snap.resist[j] > .2 ? 'no' : 'ok'}">${pct(snap.resist[j])}</b></div>`).join('');
   const plan = { ...trial.rx };
   const durs = [...new Set([...m.durations.filter(d => d > elapsed), plan.dur])].sort((a, b) => a - b);
+  // once the infection is gone, the plan can simply stop today
+  if (snap.total < m.cureBelow && elapsed < plan.dur) durs.unshift(elapsed);
   const opts = (list, cur) => list.map(([v, l]) => `<option value="${v}" ${String(v) === String(cur) ? 'selected' : ''}>${l}</option>`).join('');
   const drugOpts = DRUGS.filter(isUnlocked).map(d => [d.id, `${d.name} (${d.cls.toLowerCase()})`]);
   const tw = m.twist || {}, mults = { costMul: tw.costMul, sideMul: tw.sideMul };
@@ -2719,13 +3034,14 @@ function txCheckpoint() {
       <div><small>Side effects so far</small><b>${pct(sideSoFar)}</b><em>limit ${pct(m.maxSide)}</em></div>
     </div>
     ${tw.text ? `<div class="cp-twist"><b>New today</b>${tw.text}</div>` : ''}
+    ${m.culture ? cultureHtml(m, plan, snap.total < m.cureBelow) : ''}
     <p class="cp-note">Now on: ${rxText(plan)}. Keep going, or adjust the plan from today. Doses already given still count. Side effects are a pharmacist's estimate. If they end up over the limit, the treatment counts as a failure.</p>
     <div class="cp-form">
       <label>Drug<select id="cp-a">${opts(drugOpts, plan.a)}</select></label>
       <label>Second drug<select id="cp-b">${opts([['', 'None'], ...drugOpts], plan.b || '')}</select></label>
       <label>Dose<select id="cp-dose">${opts([['low', 'Low'], ['std', 'Standard'], ['high', 'High']], plan.dose)}</select></label>
       <label>Per day<select id="cp-freq">${opts(freqs, Math.min(plan.freq, tw.freqMax || 3))}</select></label>
-      <label>Course<select id="cp-dur">${opts(durs.map(d => [d, `${d} days`]), plan.dur)}</select></label>
+      <label>Course<select id="cp-dur">${opts(durs.map(d => [d, d === elapsed ? 'Stop today' : `${d} days`]), plan.dur)}</select></label>
     </div>
     <div class="cp-preview" id="cp-preview"></div>
     <div class="btns"><button class="ghost" id="cp-keep">Keep the plan</button><button class="primary" id="cp-apply">Change the plan ▶</button></div>`);
@@ -2771,7 +3087,8 @@ function updateTxTrial(dt, t) {
   txEvents(h);
   if (!trial.checkpointDone && s.snap && T >= s.snap.day) {
     trial.checkpointDone = true;
-    if ((s.hosp === null || s.hosp > s.snap.day) && s.snap.total >= m.cureBelow) txCheckpoint();
+    // a culture result is worth acting on even after the infection clears: narrow down or stop the broad drug
+    if ((s.hosp === null || s.hosp > s.snap.day) && (s.snap.total >= m.cureBelow || m.culture)) txCheckpoint();
   }
   if (trial.autoCam && T >= m.startDay) setCam('closeup');
 
@@ -3035,12 +3352,12 @@ const changeText = (m, ch) => m.kind ? `day ${ch.day}: ${rxText(ch.rx)}` : `boos
 function attemptCond(m) {
   if (m.kind) {
     const res = Object.entries(m.preResist || {}).filter(([, v]) => v > 0).map(([id, v]) => `${DRUG(id).name} ${pct(v)}`).join(', ') || 'none';
-    return { ...(m.wave ? { wave: OB_WAVES[m.wave].label } : {}), resist: res };
+    return { ...(m.runNo ? { run: `#${m.runNo}` } : {}), ...(m.wave ? { wave: OB_WAVES[m.wave].label } : {}), resist: res };
   }
   return { ...(m.wave ? { wave: (m.story === 'riverbend' ? RB_WAVES : OB_WAVES)[m.wave].label } : {}),
     day: `day ${m.challengeDay}`, goal: pct(m.minProtect), drift: m.drift ? pct(m.drift) : 'none' };
 }
-const COND_LABEL = { wave: 'Wave', resist: 'Starting resistance', day: 'Exposure', goal: 'Goal', drift: 'Strain drift' };
+const COND_LABEL = { run: 'Outbreak run', wave: 'Wave', resist: 'Starting resistance', day: 'Exposure', goal: 'Goal', drift: 'Strain drift' };
 function recordAttempt(m, s) {
   save.attempts = save.attempts || {};
   const list = save.attempts[m.id] = attemptsFor(m).slice();
@@ -3048,7 +3365,7 @@ function recordAttempt(m, s) {
   list.unshift({
     plan: m.kind ? { ...trial.rx } : { ...trial.startDesign },
     change: m.kind ? (trial.changeRx ? { day: trial.changeDay, rx: { ...trial.changeRx } } : null) : (trial.baseSim ? { day: VAX_CHECKPOINT } : null),
-    pathogen: m.pathogen, wait: m.wait, cond: attemptCond(m),
+    pathogen: m.pathogen, wait: m.wait, start: m.start, cond: attemptCond(m),
     res: { success: s.success, stars: s.stars, headline, side: s.side, cost: s.cost, protection: m.kind ? undefined : (s.halted ? 0 : s.protection) },
   });
   list.length = Math.min(list.length, ATTEMPTS_KEPT);
@@ -3063,11 +3380,12 @@ function lastAttemptHtml(m) {
     : k === 'dose' ? DOSE_LV[v].name : k === 'a' || k === 'b' ? DRUG(v).name : part(k, v).name;
   const keys = m.kind ? ['a', 'b', 'dose', 'freq', 'dur'] : ['carrier', 'antigen', 'adjuvant', 'route', 'doses'];
   const changes = keys.filter(k => (prev.plan[k] ?? null) !== (now.plan[k] ?? null)).map(k => `${label[k]}: ${show(k, prev.plan[k])} → <b>${show(k, now.plan[k])}</b>`);
+  if (now.start && prev.start && now.start !== prev.start) changes.unshift(`Start: ${PC_STARTS[prev.start].label} → <b>${PC_STARTS[now.start].label}</b>`);
   if (now.wait && prev.wait && now.wait !== prev.wait) changes.unshift(`Timing: ${RB_WAITS[prev.wait].label} → <b>${RB_WAITS[now.wait].label}</b>`);
   // a different situation makes the numbers below an unfair comparison, so it goes first
   const condDiff = prev.cond && now.cond ? Object.keys(now.cond).filter(k => prev.cond[k] !== now.cond[k]) : [];
   const condHtml = condDiff.length ? `<div class="cmp-cond">⚠ <b>Different conditions:</b> ${condDiff.map(k => `${COND_LABEL[k]} ${prev.cond[k]} → <b>${now.cond[k]}</b>`).join(' · ')}.
-    Earlier chapters played out differently, so this isn\u2019t a like-for-like test of your plan.</div>` : '';
+    ${condDiff.includes('run') ? 'This is a new run of the outbreak, and the culprit may be different' : 'Earlier chapters played out differently'}, so this isn\u2019t a like-for-like test of your plan.</div>` : '';
   if (!!prev.change !== !!now.change) changes.push(`Checkpoint: ${prev.change ? 'changed plan' : 'kept plan'} → <b>${now.change ? 'changed plan' : 'kept plan'}</b>`);
   // green when the number moved the good way
   const move = (a, b, fmt, upIsGood) => {
@@ -3167,7 +3485,7 @@ function compareHtml(s, m) {
     if (trial.baseSim) {
       const b = trial.baseSim, parts = [];
       const bo = txOutcome(b, m), so = txOutcome(s, m);
-      if (!bo.ok && so.ok) parts.push(b.hosp !== null ? 'kept the patient out of the hospital' : 'turned a relapse into a cure');
+      if (!bo.ok && so.ok) parts.push(b.hosp !== null ? 'kept the patient out of the hospital' : b.final < m.cureBelow ? 'brought side effects back under the limit' : 'turned a relapse into a cure');
       else if (bo.ok && !so.ok) parts.push('turned a cure into a failure');
       else if (bo.ok && so.ok) { const d = dayOf(b.cleared) - dayOf(s.cleared); parts.push(d > 0 ? `cleared it ${d} day${d > 1 ? 's' : ''} sooner` : d < 0 ? `cleared it ${-d} day${d < -1 ? 's' : ''} later` : 'cleared it on the same day'); }
       else parts.push('still fell short');
@@ -3231,6 +3549,8 @@ function showResult() {
   let notes = m.sandbox ? s.notes.filter(n => !n.startsWith('★')) : s.notes.slice();
   // for vaccines the breakdown explains the causes, so keep only the headline and bonus goals
   if (!tx && !s.halted) notes = notes.filter((n, i) => i === notes.length - 1 && !s.success || n.startsWith('★') || s.success && i === 0);
+  const storyNote = m.outbreak && STORIES[m.story].resultNote ? STORIES[m.story].resultNote(m, s) : '';
+  if (storyNote) notes.push(storyNote);
   const title = s.effect === 'none' ? 'Recovered on their own' : s.success ? (tx ? 'Patient cured!' : 'Trial successful!')
     : s.halted ? (tx ? 'Patient hospitalized' : 'Trial halted') : (tx ? 'Treatment failed' : 'Trial failed');
   const outcome = tx

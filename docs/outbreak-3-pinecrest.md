@@ -1,6 +1,6 @@
 # Outbreak 3: Pinecrest Camp (design sketch v2)
 
-Status: **v2, with Jacob and Codex's answers applied (see "Changes from v1"). Nothing is built yet.** It reuses the three-chapter framework from Harbor Fever (`docs/outbreak-campaign.md`) and Riverbend Flu (`docs/outbreak-2-riverbend-flu.md`): shared budget, case file with evidence to read, carry-forward on fixed values, snapshots and replays, town map, consequence card, town report, Mastery. This doc only covers what's **different**.
+Status: **built (v2), with three changes found while building** (see "Changes while building"). Tuned values: budget $150k, culture 3 days (`PC_WAIT`), 5 days once antibiotics have started (`PC_LATE`), bug growth 1.2 (untreated campers turn critical around day 5), side-effect limit 45%, Broad-Spectrum carry-forward 0 / 15% / 45% / 60% (none / came off at the culture / kept going / bred resistance). With the culprit unknown, the harness finds broad best for 48% of plans, a narrow guess 30% and waiting 22%. It reuses the three-chapter framework from Harbor Fever (`docs/outbreak-campaign.md`) and Riverbend Flu (`docs/outbreak-2-riverbend-flu.md`): shared budget, case file with evidence to read, carry-forward on fixed values, snapshots and replays, town map, consequence card, town report, Mastery. This doc only covers what's **different**.
 
 ## Where it lives
 
@@ -102,6 +102,12 @@ Teaching moment: **broad protection now has a cost later.** Narrowing down at th
 - **De-escalating beats a full broad course** on chapter 3 resistance, for every winning chapter 2 plan.
 - Every chapter 3 state is winnable at the $60k floor, whichever suspect is true (checked exhaustively, as before).
 - **Both truths are fair:** neither suspect makes the story much easier than the other.
+
+## Changes while building
+
+- **The culture is slower once antibiotics have started (day 5 instead of day 3).** Without this, a blind narrow guess was never worse than waiting: a wrong guess switched drugs on day 3, the same day a waiter started treatment. That made "Wait for the culture" pointless. This is real medicine, simplified: hospitals take cultures before the first dose because antibiotics in the sample slow or spoil the result. Now a wrong guess loses 5 days and waiting loses 3.
+- **The culture checkpoint opens even if the infection has already cleared**, with a "Stop today" course option, so a broad start can always come off Broad-Spectrum when the culture names the culprit.
+- **Bug growth is 1.2 instead of Harbor Fever's 1.4**, so waiting 3 days is costly (about 19× more bacteria, 75% of the way to the hospital line) but survivable with a good plan.
 
 ## Changes from v1
 
