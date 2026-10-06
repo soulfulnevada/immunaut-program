@@ -6,6 +6,7 @@ Built with Claude Code in one session. All of it works and was played through in
 
 | Feature | State |
 |---|---|
+| Title screen | Opens the game over the turning 3D scene: logo, one-line pitch, the game's four steps and Play. Play reads "Continue" when there's a save and goes straight to an outbreak in progress. Enter starts; the top-bar logo returns to it from Mission Control. |
 | Menu tabs | 🌊 Outbreak (default) · 📘 Tutorial (the vaccine and treatment missions, as two sections) · 🧪 Sandbox. |
 | Vaccine campaign | 5 missions: lab with carrier/antigen/adjuvant/delivery/doses, 3D trial, debrief, science and research tree. Jacob has beaten all 5. |
 | Treatment campaign | 5 missions: antibiotics/antivirals, combo slot, dose/frequency/course length, resistant strains drawn in orange. |

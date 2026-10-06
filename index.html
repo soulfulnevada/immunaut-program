@@ -39,6 +39,24 @@
   #labels div { position: fixed; transform: translate(-50%, -50%); font: 600 11px Inter, sans-serif; letter-spacing: .08em; text-transform: uppercase; color: #cfe3ff; background: #0a0e19aa; border: 1px solid var(--line); padding: 3px 8px; border-radius: 99px; pointer-events: none; white-space: nowrap; }
 
   /* menu */
+  /* title screen: over the live 3D scene, which keeps turning behind it */
+  #title { position: fixed; inset: 0; z-index: 6; display: flex; align-items: center; justify-content: center; padding: 16px; text-align: center;
+    background: radial-gradient(ellipse at 50% 45%, #0a0e19b3 0%, #0a0e1980 45%, #0a0e19e6 85%); }
+  .title-wrap { width: min(680px, 100%); display: grid; justify-items: center; gap: 14px; animation: title-in .9s ease-out both; }
+  .title-kicker { font-size: 13px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+  .title-logo { margin: 0; font: 800 clamp(48px, 11vw, 104px)/.9 "Exo 2", sans-serif; letter-spacing: .04em;
+    background: linear-gradient(90deg, #4fd1ff, #5be38f); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .title-logo span { display: block; font-size: .36em; font-weight: 500; letter-spacing: .42em; margin-top: 10px; color: var(--text); -webkit-text-fill-color: var(--text); }
+  .title-tag { margin: 4px 0 0; font-size: 17px; line-height: 1.5; color: #c9d5ea; max-width: 560px; }
+  .title-steps { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px 8px; font-size: 14px; }
+  .title-steps span { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: #ffffff08; }
+  .title-steps i { font-style: normal; color: var(--muted); }
+  .title-play { width: min(320px, 100%); margin-top: 8px; font-size: 20px; padding: 15px; }
+  .title-sub { min-height: 18px; font-size: 13px; color: var(--accent); }
+  .title-fine { max-width: 520px; }
+  @keyframes title-in { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .title-wrap { animation: none; } }
+  .brand { cursor: pointer; }
   #menu { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px; }
   #menu .panel { width: min(760px, 100%); padding: 24px; max-height: 100%; overflow: auto; }
   #menu h1 { margin: 0 0 4px; font-size: 30px; }
@@ -360,6 +378,18 @@
   <div id="mission-tag"></div>
   <div class="sci">⚗ <b id="sci">0</b> science</div>
 </header>
+
+<section id="title" class="hidden">
+  <div class="title-wrap">
+    <div class="title-kicker">A game about vaccines, medicine and the immune system</div>
+    <h1 class="title-logo">IMMUNAUT<span>PROGRAM</span></h1>
+    <p class="title-tag">Build vaccines and treatment plans from parts, watch the immune system fight it out in 3D, and stop outbreaks before they spread.</p>
+    <div class="title-steps"><span>🧪 Design</span><i>→</i><span>🔬 Trial</span><i>→</i><span>📋 Debrief</span><i>→</i><span>🌊 Outbreak</span></div>
+    <button class="primary title-play" id="title-play">▶ Play</button>
+    <div class="title-sub" id="title-sub"></div>
+    <p class="fine title-fine">This is a game, not medical advice. The immunology is simplified, and every pathogen is made up. Press Enter to start.</p>
+  </div>
+</section>
 
 <section id="menu" class="screen">
   <div class="panel">
@@ -1826,6 +1856,33 @@ function goMenu() {
   controls.autoRotate = true; controls.autoRotateSpeed = .4;
   camTo(new THREE.Vector3(0, 30, 62), new THREE.Vector3(0, 0, 0));
 }
+
+// ---------- title screen ----------
+// The game opens here. "Continue" names an outbreak in progress, and Play takes you straight to it.
+const liveStory = () => Object.entries(save.stories || {}).find(([id, st]) => STORIES[id] && st.run && st.run.chapter < 4);
+function showTitle() {
+  if (inspected) closeInspect();
+  trial.active = false; mode = 'title';
+  for (const id of ['menu', 'lab', 'trial', 'topbar']) $(id).classList.add('hidden');
+  $('result').classList.add('hidden'); $('title').classList.remove('hidden');
+  const live = liveStory(), any = live || save.science > 0 || Object.values(save.missions).some(r => r.done);
+  $('title-play').textContent = any ? '▶ Continue' : '▶ Play';
+  $('title-sub').textContent = live ? `${STORIES[live[0]].data.name}: chapter ${live[1].run.chapter} in progress` : any ? `${save.science} ⚗ science saved` : '';
+  controls.autoRotate = true; controls.autoRotateSpeed = .25;
+  // aim above the scene so the cells drift below the logo instead of behind it
+  camTo(new THREE.Vector3(0, 30, 50), new THREE.Vector3(0, 22, 0));
+}
+function leaveTitle() {
+  const live = liveStory();
+  if (live) { campaign = 'outbreak'; storyId = save.storyId = live[0]; }
+  $('title').classList.add('hidden'); $('topbar').classList.remove('hidden');
+  goMenu();
+}
+$('title-play').onclick = leaveTitle;
+document.addEventListener('keydown', e => { if (mode === 'title' && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); leaveTitle(); } });
+// the logo in the top bar goes back to the title screen from Mission Control
+document.querySelector('#topbar .brand').onclick = () => { if (mode === 'menu') showTitle(); };
+document.querySelector('#topbar .brand').title = 'Title screen';
 
 // ---------- outbreak campaign ----------
 // What each test actually shows: the player reads it, or asks the lab tech (costs a commendation point).
@@ -3716,10 +3773,11 @@ function frame() {
   nodeWire.rotation.y += dt * .05;
   controls.update();
   renderer?.render(scene, camera);
-  updateLabels(mode !== 'lab');
+  updateLabels(mode !== 'lab' && mode !== 'title');
 }
 camera.position.set(0, 30, 62);
 goMenu();
+showTitle();
 frame();
 </script>
 </body>
