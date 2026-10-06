@@ -251,6 +251,13 @@
   .ob-map figcaption { font-size: 12px; color: #c9d5ea; margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px 12px; justify-content: space-between; }
   .ob-map-key { display: inline-flex; flex-wrap: wrap; gap: 4px 10px; color: var(--muted); }
   .ob-map-key i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 4px; vertical-align: -1px; }
+  .ob-mastery { padding: 10px 12px; border-radius: 10px; background: #ffffff06; border: 1px solid var(--line); display: grid; gap: 3px; }
+  .ob-mastery.won { background: #ffd16614; border-color: #ffd16677; }
+  .ob-mastery > b { font: 700 16px "Exo 2", sans-serif; }
+  .ob-mastery.won > b { color: #ffd166; }
+  .ob-mastery small { color: var(--muted); font-size: 12px; }
+  .ob-mastery p { margin: 4px 0 0; font-size: 13px; color: #d6e6fb; }
+  .mastered { font-style: normal; font-size: 12px; color: #ffd166; margin-left: 4px; }
   .ob-medals { display: grid; gap: 6px; }
   .ob-medal { display: grid; grid-template-columns: 30px 1fr auto; gap: 8px; align-items: center; padding: 8px 10px; border-radius: 10px; background: #ffffff06; opacity: .65; }
   .ob-medal.won { opacity: 1; background: #ffb34714; box-shadow: inset 0 0 0 1px #ffb34755; }
@@ -262,6 +269,7 @@
   .ob-timeline { margin: 0; padding-left: 20px; font-size: 13px; color: #c9d5ea; }
   .ob-timeline li { margin-bottom: 3px; }
   @media (max-width: 760px) { .ob-steps { grid-template-columns: 1fr 1fr; } .ob-field { grid-template-columns: 1fr; } }
+  .last-cmp { display: grid; gap: 4px; font-size: 13px; color: #c9d5ea; background: #ffffff06; border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; margin-bottom: 14px; }
   .chal { display: grid; gap: 5px; margin-bottom: 12px; }
   .chal small { color: var(--muted); font-size: 12px; }
   .chal-row { display: grid; grid-template-columns: 20px 1fr; gap: 0 6px; align-items: center; padding: 5px 8px; border-radius: 8px; background: #ffffff06; font-size: 13px; }
@@ -452,6 +460,14 @@ function reactoOf(d) {
 
 // `late` marks the last dose as a booster added at the checkpoint, with the mission's twist:
 // { boostEff, sideMul, costMul } scale that one dose's antibody boost, reactions and price.
+// Doses on or after exposure can't help, and antibodies need about two weeks after a dose to peak.
+function doseTiming(doses, ch) {
+  const days = [...Array(doses)].map((_, k) => k * DOSE_GAP);
+  const useful = Math.max(1, days.filter(t0 => t0 < ch).length);
+  const lastUseful = days[useful - 1];
+  return { days, useful, lateDoses: doses - useful, lastUseful, gap: ch - lastUseful, building: ch - lastUseful < 14, firstLate: days[useful] };
+}
+
 function simulate(d, m, late = null) {
   const c = part('carrier', d.carrier), a = part('antigen', d.antigen), j = part('adjuvant', d.adjuvant), r = part('route', d.route);
   const spoil = m.cold ? 0 : (1 - c.stab) * .9;
@@ -460,8 +476,10 @@ function simulate(d, m, late = null) {
   const match = a.immuno * (1 - escape);
   const abBase = delivered * c.potency * match * (1 + j.ab);
   const tBase = delivered * c.tcell * match * (1 + j.t);
-  const memory = Math.min(.95, c.memory + .12 * (d.doses - 1) + j.mem);
-  const doseDays = [...Array(d.doses)].map((_, k) => k * DOSE_GAP);
+  const tm = doseTiming(d.doses, m.challengeDay);
+  // only doses given before exposure build memory; a later one can't reach back in time
+  const memory = Math.min(.95, c.memory + .12 * (tm.useful - 1) + j.mem);
+  const doseDays = tm.days;
   const boost = k => 1 + .5 * k;
   const lastK = d.doses - 1, eff = k => late && k === lastK ? (late.boostEff ?? 1) : 1;
   const ab = t => Math.max(0, ...doseDays.map((t0, k) => abBase * boost(k) * eff(k) * rise(t - t0, 14, memory * .6, 30)));
@@ -480,7 +498,8 @@ function simulate(d, m, late = null) {
   const halted = side > m.maxSide;
   const haltDay = late ? doseDays[lastK] + 1.5 : 2.5; // a late booster can only halt the trial once it's given
   const success = !halted && protection >= m.minProtect;
-  const peakAb = abBase * boost(d.doses - 1);
+  // the best antibody level the doses given before exposure could reach
+  const peakAb = abBase * boost(tm.useful - 1) * eff(tm.useful - 1);
 
   const notes = [];
   if (halted && late) {
@@ -493,7 +512,9 @@ function simulate(d, m, late = null) {
   } else if (!success) {
     if (spoil > .2) notes.push(`${pct(spoil)} of doses spoiled without refrigeration. A more stable carrier would survive the trip.`);
     if (escape > .15) notes.push(`The strain has drifted, so your antigen only matched ${pct(1 - escape)} as well as it should. A conserved target holds up against mutation.`);
-    if (abC < peakAb * .5) notes.push(`Immunity had faded by the exposure on day ${ch}. Booster doses or memory-building parts help it last.`);
+    if (tm.building) notes.push(`Immunity was still building at exposure on day ${ch}: the last useful dose came only ${tm.gap} days earlier.`);
+    else if (abC < peakAb * .5) notes.push(`Immunity had faded by the exposure on day ${ch}. Booster doses or memory-building parts help it last.`);
+    if (tm.lateDoses) notes.push(`Dose ${tm.useful + 1} landed on day ${tm.firstLate}, after exposure on day ${ch}, so it couldn't help.`);
     if (abBase < .3) notes.push('The immune response was weak from the start. A stronger carrier or an adjuvant would boost it.');
     if (m.resp && r.id === 'im' && PARTS.route[1] && notes.length < 3) notes.push('This is a respiratory pathogen. Defenses in the airways could help.');
     notes.push(`Protection was ${pctP(protection)}, and you needed ${pct(m.minProtect)}.`);
@@ -502,6 +523,7 @@ function simulate(d, m, late = null) {
   }
   const stars = runStars(m, { success, cost, side, protection });
 
+  const noFadeOk = () => clamp(1 - Math.exp(-2.5 * (peakAb + .5 * tBase * boost(tm.useful - 1) * eff(tm.useful - 1))) + (m.resp ? r.mucosal : 0), 0, .99) >= m.minProtect;
   // How each part of the design contributed, scaled 0-1 against the best available.
   // The weakest link becomes the debrief's clue.
   const lasting = peakAb > 0 ? abC / peakAb : 0;
@@ -518,31 +540,44 @@ function simulate(d, m, late = null) {
     { key: 'adjuvant', label: 'Adjuvant boost', value: (1 + j.ab) / 1.45, show: `+${pct(j.ab)}`, why: j.name,
       clue: j.id === 'none' ? 'You used no adjuvant. Alum or Squalene would boost antibodies by 25–45% for a little extra soreness.'
         : `${j.name} adds +${pct(j.ab)}. Squalene Emulsion adds the most antibodies.` },
-    { key: 'boosters', label: 'Booster doses', value: boost(d.doses - 1) / 2, show: `${d.doses}×`, why: `${d.doses} dose${d.doses > 1 ? 's' : ''}`,
-      clue: `${d.doses === 1 ? 'A single dose gives one wave of antibodies.' : `${d.doses} doses helped.`} Each booster adds +50% on top and makes immunity last longer.` },
-    { key: 'lasting', label: `Still active on day ${ch}`, value: lasting, show: pct(lasting), why: `memory ${pct(memory)}`,
-      clue: `Only ${pct(lasting)} of your peak antibodies were left by exposure on day ${ch}. More doses, a TLR Agonist or a live carrier build longer-lasting memory.` },
+    { key: 'boosters', label: 'Booster doses', value: boost(tm.useful - 1) / 2, show: `${tm.useful}×${tm.lateDoses ? ` +${tm.lateDoses} late` : ''}`,
+      why: tm.lateDoses ? `dose ${tm.useful + 1} on day ${tm.firstLate}, after exposure` : `${d.doses} dose${d.doses > 1 ? 's' : ''}`,
+      clue: tm.lateDoses
+        ? `Dose ${tm.useful + 1} lands on day ${tm.firstLate}, after exposure on day ${ch}. It added cost and side effects but no protection. Fewer doses, or more time before exposure, would use the budget better.`
+        : `${d.doses === 1 ? 'A single dose gives one wave of antibodies.' : `${d.doses} doses helped.`} Each booster adds +50% on top and makes immunity last longer.` },
+    // at exposure, antibodies are either still building (too little time) or fading (too much): different fixes
+    tm.building
+      ? { key: 'lasting', label: `Built up by day ${ch}`, value: lasting, show: pct(lasting), why: `last useful dose ${tm.gap} days before exposure`,
+          clue: `Your last useful dose came only ${tm.gap} days before exposure, and antibodies take about two weeks to peak, so they were still building on day ${ch}. Immunity hadn\u2019t faded; it hadn\u2019t finished forming. More time before exposure, or fewer and earlier doses, fixes this. More doses won\u2019t.` }
+      : { key: 'lasting', label: `Still active on day ${ch}`, value: lasting, show: pct(lasting), why: `memory ${pct(memory)}`,
+          clue: `Only ${pct(lasting)} of your peak antibodies were left by exposure on day ${ch}. More doses, a TLR Agonist or a live carrier build longer-lasting memory.` },
   ];
   const weakest = halted ? null : breakdown.slice().sort((x, y) => x.value - y.value)[0];
+  let focus = weakest;
   let clue = halted ? null : weakest.clue;
   if (!halted && m.resp && r.id === 'im' && mucosal === 0 && weakest.value > .6)
     clue = 'This pathogen enters through the airways. A nasal spray builds defenses right where it lands (+15% protection).';
+  // timing problems outrank the weakest part: they need a different fix
+  if (!halted && !success && tm.building && noFadeOk()) { focus = breakdown.find(b => b.key === 'lasting'); clue = focus.clue; }
+  else if (!halted && tm.lateDoses) { focus = breakdown.find(b => b.key === 'boosters'); clue = focus.clue; }
 
   // what held this design back, for grading the player's prediction:
   // if it would have passed with no fading at all, durability was the limit; otherwise strength was
-  const peakT = Math.max(...doseDays.map((_, k) => tBase * boost(k) * eff(k)));
-  const peakAll = Math.max(...doseDays.map((_, k) => abBase * boost(k) * eff(k)));
-  const noFade = clamp(1 - Math.exp(-2.5 * (peakAll + .5 * peakT)) + mucosal, 0, .99);
-  const limiter = halted ? 'side' : success ? 'none' : noFade >= m.minProtect ? 'durability' : 'strength';
+  // only doses given before exposure count
+  const peakT = tBase * boost(tm.useful - 1) * eff(tm.useful - 1);
+  const noFade = clamp(1 - Math.exp(-2.5 * (peakAb + .5 * peakT)) + mucosal, 0, .99);
+  // strong enough at its peak? then either the peak hadn't arrived yet (timing) or it had already passed (durability)
+  const limiter = halted ? 'side' : success ? 'none' : noFade < m.minProtect ? 'strength' : tm.building ? 'timing' : 'durability';
   const limiterWhy = {
     side: `Reactions reached ${pct(side)}, past the ${pct(m.maxSide)} limit.`,
     none: `It reached ${pctP(protection)} protection, above the ${pct(m.minProtect)} goal.`,
     durability: `At their peak, antibodies would have given about ${pct(noFade)} protection, but they faded to ${pctP(protection)} by day ${ch}.`,
     strength: `Even at their peak, antibodies only reached about ${pct(noFade)} protection, short of ${pct(m.minProtect)}.`,
+    timing: `At its peak this design would have given about ${pct(noFade)} protection, but exposure came only ${tm.gap} days after your last useful dose, before antibodies had peaked (${pctP(protection)}).`,
   }[limiter];
 
   return { spoil, delivered, escape, abBase, tBase, memory, doseDays, ab, tc, antigen, fever, virus, side, limiter, limiterWhy,
-    protection, cost, halted, haltDay, success, stars, notes, peakAb, breakdown, clue, mucosal, end: halted ? haltDay : ch + 14 };
+    protection, cost, halted, haltDay, success, stars, notes, peakAb, breakdown, clue, clueKey: focus?.key, mucosal, timing: tm, end: halted ? haltDay : ch + 14 };
 }
 // MODEL-END
 
@@ -896,7 +931,7 @@ function obAfterCh2(run, s, m) {
   // why each drug lost ground, for the consequence card: its resistant microbes multiplied, or the treatment relapsed on it
   const why = {};
   s.ids.forEach((id, j) => { if (s.works[j] && carry.resist[id] > obBase(id) + 1e-9) why[id] = s.resistedBy[j] ? 'bred' : 'relapse'; });
-  return { ch2: { ...carry, used: s.ids.slice(), why }, spentCh2: s.cost, grant: Math.max(0, OUTBREAK.floor - left) };
+  return { ch2: { ...carry, used: s.ids.slice(), why, success: s.success }, spentCh2: s.cost, grant: Math.max(0, OUTBREAK.floor - left) };
 }
 function obFinish(run, s, m) {
   const finalResist = m.kind ? obResistAfter(s, run.ch2.resist) : run.ch2.resist;
@@ -958,7 +993,7 @@ function rbCh3Mission(carry, budget) {
 const rbWave = (s, m) => !s.success ? 'large' : s.protection >= m.minProtect + .15 ? 'small' : 'normal';
 function rbAfterCh2(run, s, m, design) {
   const left = RIVERBEND.budget - run.spent.tests - s.cost;
-  return { ch2: { wave: rbWave(s, m), escape: design.antigen === 'spike', antigen: design.antigen, wait: m.wait },
+  return { ch2: { wave: rbWave(s, m), escape: design.antigen === 'spike', antigen: design.antigen, wait: m.wait, success: s.success },
     spentCh2: s.cost, grant: Math.max(0, RIVERBEND.floor - left) };
 }
 function rbFinish(run, s, m) {
@@ -966,6 +1001,42 @@ function rbFinish(run, s, m) {
   // "kept pace": the winter vaccine aimed at something the drifted strain couldn't dodge
   const medals = [s.success && 'town', !s.halted && s.escape <= .25 && 'pace', run.grant === 0 && left >= 20 && 'budget'].filter(Boolean);
   return { left, medals, tier: obCommendation(run.file, RIVERBEND).tier };
+}
+// Outbreak Mastery: both waves protected, with no emergency funding.
+const obMastered = run => !!(run.ch2 && run.ch2.success && run.ch3 && run.ch3.success && run.grant === 0);
+// "Which decision mattered most": replay the player's own chapter 3 plan under alternative histories and
+// report the change that would have helped most. Scored on whole outcomes, not raw percentages: an
+// alternative that loses the first wave can't count as better, and protection is judged against each goal.
+function whatIfScore(x) {
+  const r = x.res, ch3 = r.drugs ? (r.hosp === null ? .5 : 0) + (r.final < 1 ? .5 : 0) : (r.halted ? -1 : r.protection - x.goal);
+  return (x.ch2ok ? 20 : 0) + (r.success ? 10 : 0) + ch3;
+}
+function obWhatIf(run) {
+  const p = run.ch3Plan, base = { ...OB_BASE_RESIST };
+  const ch3 = (carry, what, ch2ok) => {
+    const m = p.route === 'tx' ? obCh3TxMission(carry, 999) : obCh3VaxMission(carry, 999, p.sequenced);
+    return { what, ch2ok, goal: m.minProtect, res: p.route === 'tx' ? simulateTx(p.rx, m) : simulate(p.design, m) };
+  };
+  const scen = [], bred = !obResistContained(run.ch2.resist);
+  if (run.ch2.wave !== 'small' || bred) scen.push(ch3({ wave: 'small', resist: base }, 'a clean first-wave cure in chapter 2 (small second wave, no resistance bred)', true));
+  if (run.ch2.wave !== 'small' && bred) scen.push(ch3({ ...run.ch2, wave: 'small' }, 'a smaller second wave (chapter 2 cleared cleanly), with the same resistance', true));
+  if (bred && p.route === 'tx') scen.push(ch3({ ...run.ch2, resist: base }, 'not breeding resistance in chapter 2, with the same second wave', run.ch2.success));
+  return { actual: ch3(run.ch2, 'what you did', !!run.ch2.success), scen };
+}
+function rbWhatIf(run) {
+  const p2 = run.ch2Plan, p3 = run.ch3Plan;
+  const ch3 = (carry, what, ch2ok) => { const m = rbCh3Mission(carry, 999); return { what, ch2ok, goal: m.minProtect, res: simulate(p3.design, m) }; };
+  const scen = Object.keys(RB_WAITS).filter(w => w !== run.ch2.wait).map(w => {
+    const m2 = rbCh2Mission(w, 999), s2 = simulate(p2.design, m2);
+    return ch3({ wave: rbWave(s2, m2), escape: run.ch2.escape }, `choosing "${RB_WAITS[w].label}" in chapter 2 with the same vaccine`, s2.success);
+  });
+  if (run.ch2.escape) scen.push(ch3({ ...run.ch2, escape: false }, 'avoiding the surface spike in chapter 2, so the winter strain wouldn\u2019t escape', !!run.ch2.success));
+  return { actual: ch3(run.ch2, 'what you did', !!run.ch2.success), scen };
+}
+// The single most helpful alternative, or null when nothing replayed would have done better.
+function mostImportant(w) {
+  const base = whatIfScore(w.actual);
+  return w.scen.filter(x => whatIfScore(x) > base + .005).sort((a, b) => whatIfScore(b) - whatIfScore(a))[0] || null;
 }
 // OUTBREAK-MODEL-END
 
@@ -1709,10 +1780,22 @@ function obBriefHtml(m) {
     + `<div><span>Goal</span><span>${m.kind ? `Cured by day ${m.days}` : `${pct(m.minProtect)} protected`}</span></div>`;
   return `<div class="conds ob-file"><h3 class="sub">Your case file</h3>${rows}</div>`;
 }
-function obBudgetNote(m) {
+// What the plan on screen leaves for later: shown before committing, so spending now is a visible trade-off.
+function obBudgetNote(m, cost = 0) {
   const run = obRun();
   if (!m.outbreak || !run) return '';
-  return `<div class="tgt-note">Outbreak budget: ${money(m.budget)} available${run.grant && run.chapter === 3 ? `, including a ${money(run.grant)} emergency grant (forfeits the 💰 medal)` : ''}.</div>`;
+  let ahead = '';
+  if (m.obChapter === 2) {
+    const next = SD().budget - run.spent.tests - cost;
+    ahead = next < SD().floor
+      ? ` <span class="warn">This plan leaves <b>${money(next)}</b> for chapter 3. That's below $${SD().floor}k, so the council would step in with an emergency grant, and the 💰 medal would be gone.</span>`
+      : ` This plan leaves <b>${money(next)}</b> for chapter 3.`;
+  } else if (m.obChapter === 3) {
+    const end = SD().budget - run.spent.tests - run.spent.ch2 - cost;
+    ahead = run.grant ? ' The 💰 medal is already out of reach after the emergency grant.'
+      : ` This plan ends the outbreak with <b>${money(Math.max(0, end))}</b> left${end < 20 ? ' <span class="warn">(the 💰 medal needs $20k)</span>' : ' (the 💰 medal needs $20k)'}.`;
+  }
+  return `<div class="tgt-note">Outbreak budget: ${money(m.budget)} available${run.grant && run.chapter === 3 ? `, including a ${money(run.grant)} emergency grant` : ''}.${ahead}</div>`;
 }
 // The brief shows the side-effect limit the player believes in; the real one applies in the trial.
 function sideMeter(m, side, tg) {
@@ -1739,6 +1822,8 @@ function obCommit(m, s) {
   } else {
     const fin = ST().commit3(run, m, s);
     run.medals = fin.medals; run.tier = fin.tier;
+    run.mastered = obMastered(run);
+    if (run.mastered) st.best.mastered = true;
     // science: a base award per finished run, plus 10 per medal you'd never earned before
     const fresh = run.medals.filter(x => !st.best.medals.includes(x));
     run.science = 20 + 10 * fresh.length;
@@ -1812,6 +1897,23 @@ function obCh1Html(run) {
     ${untested.length ? `<h3 class="sub">Your assessments (untested)</h3><div class="ob-form">${fields}</div>` : ''}
     <button class="primary" id="ob-file">File the case and start chapter 2 ▶</button>`;
 }
+const MASTERY_GOAL = 'Protect the town in both waves without any emergency funding.';
+function obMasteryHtml(run) {
+  const nextName = ST().map.next, ok = !!run.mastered;
+  const status = `First wave ${run.ch2.success ? '✓' : '✗'} · ${nextName.charAt(0).toUpperCase() + nextName.slice(1)} ${run.ch3.success ? '✓' : '✗'} · ${run.grant ? 'emergency grant used ✗' : 'no emergency grant ✓'}`;
+  let insight = '';
+  if (run.ch3Plan) {
+    const w = ST().whatIf(run), top = mostImportant(w);
+    const say = x => x.res.drugs ? (x.res.success ? 'cure the patient' : x.res.hosp !== null ? 'end with the patient in the hospital' : 'leave the infection uncleared')
+      : x.res.halted ? 'be halted by the safety board' : `protect ${pctP(x.res.protection)} of the town (goal ${pct(x.goal)})`;
+    const lead = run.mastered ? 'Your biggest remaining lever' : 'The decision that mattered most';
+    insight = top
+      ? `<b>${lead}:</b> ${top.what}. Then your same chapter 3 plan would <b>${say(top)}</b>, instead of ${say(w.actual)}.${!run.ch2.success && top.ch2ok ? ' The first wave would have been handled too.' : ''}`
+      : run.ch3.success ? '<b>Your path held up:</b> none of the alternative histories we replayed would have done better with your chapter 3 plan.'
+      : '<b>Chapter 3’s own plan mattered most:</b> none of the alternative histories would have rescued it. A different chapter 3 design was needed.';
+  }
+  return `<div class="ob-mastery ${ok ? 'won' : ''}"><b>${ok ? '⭐ Outbreak mastered!' : '⭐ Not mastered yet'}</b><small>${MASTERY_GOAL} ${status}</small>${insight ? `<p>${insight}</p>` : ''}</div>`;
+}
 function obReportHtml(run) {
   const st = obState(), left = obLeft(run);
   const medal = ([icon, name, ok, why]) => `<div class="ob-medal ${ok ? 'won' : ''}"><span>${icon}</span><div><b>${name}</b><small>${why}</small></div><em>${ok ? 'Earned' : 'Missed'}</em></div>`;
@@ -1827,6 +1929,7 @@ function obReportHtml(run) {
   const medals = [...ST().medals(run, left),
     ['📋', 'Case-file commendation', !!com.tier, `${com.tier ? OB_TIER[com.tier] : 'None'}: ${com.pts} of 10 points (2 for each test you read correctly, 1 for each test the lab tech explained or each right guess).`]];
   return `<h3 class="sub">Town report · ${SD().name}</h3>
+    ${obMasteryHtml(run)}
     <div class="ob-medals">${medals.map(medal).join('')}</div>
     ${ST().consequence(run).replace('What chapter 2 set up', `How chapter 2 shaped the ${ST().map.next}`)}
     <h3 class="sub">Your case file, graded</h3>
@@ -1842,7 +1945,7 @@ function obStoryCards() {
     const status = locked ? '🔒 Finish Harbor Fever to unlock' : st.run ? (st.run.chapter === 4 ? 'Run finished: see the town report' : `In progress: chapter ${st.run.chapter}`)
       : st.runs ? `Best: ${st.best.medals.map(x => S.icons[x]).join(' ') || 'no medals yet'}` : 'Not started';
     return `<button class="story-card ${storyId === id ? 'on' : ''} ${locked ? 'locked' : ''}" data-story="${id}" ${locked ? 'disabled' : ''}>
-      <b>${S.icon} ${S.data.name}</b><small>${S.teaser}</small><span>${status}</span></button>`;
+      <b>${S.icon} ${S.data.name}${st.best.mastered ? ' <em class="mastered">⭐ Mastered</em>' : ''}</b><small>${S.teaser}</small><span>${status}</span></button>`;
   }).join('')}</div>`;
 }
 function renderOutbreak() {
@@ -1851,6 +1954,7 @@ function renderOutbreak() {
   let body;
   if (!run) body = `<div class="ob-card"><h2>${ST().icon} ${SD().name}</h2><p class="ob-lead">${SD().intro}</p>
       <p class="fine">Three linked chapters: investigate, respond, adapt. What you find and spend carries forward. ${ST().fine}</p>
+      <p class="fine">⭐ <b>Mastery:</b> ${MASTERY_GOAL}${st.best.mastered ? ' <span class="ok">Done!</span>' : ''}</p>
       ${st.runs ? `<p class="fine">Runs finished: ${st.runs} · best medals: ${st.best.medals.map(x => ST().icons[x]).join(' ') || 'none'}</p>` : ''}
       <button class="primary" id="ob-start">Start ${SD().name} ▶</button></div>`;
   else body = `<div class="ob-card">${obProgressHtml(run)}${obMapHtml(run)}${run.chapter === 1 ? obCh1Html(run) : run.chapter === 2 ? ST().ch2Html(run) : run.chapter === 3 ? ST().ch3Html(run) : obReportHtml(run)}</div>`;
@@ -1889,7 +1993,7 @@ const OB_OUTCOME = {
   large: 'The first-wave patient ended up in the hospital',
 };
 const HARBOR = {
-  data: OUTBREAK, icon: '⚓', teaser: 'A lung bacterium in a port town. Treat it without breeding resistance, then face the second wave.',
+  data: OUTBREAK, icon: '⚓', whatIf: run => obWhatIf(run), teaser: 'A lung bacterium in a port town. Treat it without breeding resistance, then face the second wave.',
   fine: 'Every part and drug is unlocked here; budget and biology are the limits.',
   ch1Lead: 'Samples from the dockworkers just arrived.',
   field: { kind: 'What it is', speed: 'How fast', resist: 'Resistance', risk: 'Patients', stability: 'Stability' },
@@ -1912,7 +2016,7 @@ const HARBOR = {
   },
   commit2(run, m, s) {
     const next = obAfterCh2(run, s, m);
-    run.spent.ch2 = next.spentCh2; run.ch2 = next.ch2; run.grant = next.grant;
+    run.spent.ch2 = next.spentCh2; run.ch2 = next.ch2; run.grant = next.grant; run.ch2Plan = { rx: { ...trial.rx } };
     run.timeline.push(`Ch 2: started on ${rxText(trial.rx)}.`);
     if (trial.changeRx) run.timeline.push(`Ch 2, day ${trial.changeDay}: switched to ${rxText(trial.changeRx)}.`);
     run.timeline.push(`Ch 2 result: ${OB_OUTCOME[next.ch2.wave].toLowerCase()}. The second wave will be ${OB_WAVES[next.ch2.wave].label.toLowerCase()}.`);
@@ -1920,6 +2024,7 @@ const HARBOR = {
   commit3(run, m, s) {
     const fin = obFinish(run, s, m), tx = !!m.kind;
     run.spent.ch3 = s.cost;
+    run.ch3Plan = tx ? { route: 'tx', rx: { ...trial.rx } } : { route: 'vax', design: { ...trial.startDesign }, sequenced: obKnows(run.file.stability, OUTBREAK.truth.stability) };
     const outcome = tx ? txOutcome(s, m).text : s.halted ? 'trial halted by the safety board' : `${pctP(s.protection)} of the town protected`;
     run.ch3 = { success: s.success, resist: fin.finalResist, outcome };
     if (tx) {
@@ -2011,7 +2116,7 @@ const RB_OUTCOME = {
   large: 'The town missed its protection goal',
 };
 const RIVER = {
-  data: RIVERBEND, icon: '🌊', teaser: RIVERBEND.teaser,
+  data: RIVERBEND, icon: '🌊', whatIf: run => rbWhatIf(run), teaser: RIVERBEND.teaser,
   fine: 'There are no drugs in this story: vaccines only. Every vaccine part is unlocked; budget and biology are the limits.',
   ch1Lead: 'Swabs from the first flu patients just arrived.',
   field: { kind: 'What it is', drift: 'Surface changes', spread: 'Case growth', risk: 'Patients', core: 'Stable core' },
@@ -2033,7 +2138,7 @@ const RIVER = {
   },
   commit2(run, m, s) {
     const next = rbAfterCh2(run, s, m, trial.design);
-    run.spent.ch2 = next.spentCh2; run.ch2 = next.ch2; run.grant = next.grant;
+    run.spent.ch2 = next.spentCh2; run.ch2 = next.ch2; run.grant = next.grant; run.ch2Plan = { design: { ...trial.startDesign } };
     run.timeline.push(`Ch 2: chose "${RB_WAITS[m.wait].label}" (${RB_WAITS[m.wait].match.toLowerCase()} strain match, ${RB_WAITS[m.wait].day} days to prepare).`);
     vaxTimeline(run, 2, m);
     run.timeline.push(`Ch 2 result: ${s.halted ? 'the trial was halted by the safety board' : `${pctP(s.protection)} protected against a ${pct(m.minProtect)} goal`}. The winter wave will be ${RB_WAVES[next.ch2.wave].label.toLowerCase()}.`);
@@ -2041,6 +2146,7 @@ const RIVER = {
   commit3(run, m, s) {
     const fin = rbFinish(run, s, m);
     run.spent.ch3 = s.cost;
+    run.ch3Plan = { route: 'vax', design: { ...trial.startDesign } };
     const outcome = s.halted ? 'trial halted by the safety board' : `${pctP(s.protection)} of the town protected`;
     run.ch3 = { success: s.success, outcome, escape: s.escape };
     vaxTimeline(run, 3, m);
@@ -2242,7 +2348,7 @@ function renderTxBrief() {
       ${meter('Resistance barrier', drugs.length === 2 ? 'Combo: very high' : barrier < .4 ? 'Low' : barrier < .7 ? 'Medium' : 'High', barrier, '#7ee0c3')}
       ${sideMeter(m, side, tg)}
       ${m.sandbox ? meter('Cost (no budget in sandbox)', `$${Math.round(cost)}k`, cost / 150, 'var(--sci)') : meter('Cost', `$${Math.round(cost)}k / $${m.budget}k${tg.costT != null ? ` · 🎯 $${tg.costT}k` : ''}`, cost / m.budget, over ? 'var(--bad)' : 'var(--sci)', null, tg.costT != null ? tg.costT / m.budget : null)}
-      ${tg.note}${obBudgetNote(m)}
+      ${tg.note}${obBudgetNote(m, cost)}
     </div>
     <button id="launch" class="primary" ${over ? 'disabled' : ''}>${over ? 'Over budget' : 'Start Treatment ▶'}</button>
     <button id="back-menu" class="ghost">← Mission Control</button>
@@ -2311,6 +2417,10 @@ function renderBrief() {
   const punch = c.delivery * r.delivery * c.potency * a.immuno * (1 + j.ab) * (1 + .5 * (d.doses - 1)) + .5 * c.delivery * c.tcell * a.immuno * (1 + j.t);
   const mem = Math.min(.95, c.memory + .12 * (d.doses - 1) + j.mem);
   const over = !m.sandbox && cost > m.budget, tg = targetMeters(m, cost, side);
+  const tm = doseTiming(d.doses, m.challengeDay);
+  const timingNote = tm.lateDoses
+    ? `<div class="tgt-note"><span class="no">⚠ Dose ${tm.useful + 1} would land on day ${tm.firstLate}, after exposure on day ${m.challengeDay}: it can't help.</span></div>`
+    : tm.building && d.doses > 1 ? `<div class="tgt-note"><span class="warn">⚠ Your last dose lands ${tm.gap} days before exposure. Antibodies take about two weeks to peak.</span></div>` : '';
   $('brief').innerHTML = `
     <div><h2>${m.name}</h2><p class="blurb">${m.blurb}</p></div>
     ${m.outbreak ? obBriefHtml(m) : `<div class="conds">
@@ -2326,7 +2436,7 @@ function renderBrief() {
       ${meter('Shelf stability', pct(c.stab), c.stab, m.cold ? '#7c8aa5' : c.stab < .6 ? 'var(--bad)' : 'var(--good)')}
       ${sideMeter(m, side, tg)}
       ${m.sandbox ? meter('Cost (no budget in sandbox)', `$${Math.round(cost)}k`, cost / 150, 'var(--sci)') : meter('Cost', `$${Math.round(cost)}k / $${m.budget}k${tg.costT != null ? ` · 🎯 $${tg.costT}k` : ''}`, cost / m.budget, over ? 'var(--bad)' : 'var(--sci)', null, tg.costT != null ? tg.costT / m.budget : null)}
-      ${tg.note}${obBudgetNote(m)}
+      ${tg.note}${timingNote}${obBudgetNote(m, cost)}
     </div>
     <button id="launch" class="primary" ${over ? 'disabled' : ''}>${over ? 'Over budget' : 'Begin Trial ▶'}</button>
     <button id="back-menu" class="ghost">← Mission Control</button>
@@ -2447,7 +2557,9 @@ function vaxCheckpoint() {
   const s = trial.sim, m = trial.mission, d = trial.design, tw = m.twist || {};
   const next = { ...d, doses: d.doses + 1 };
   const added = (designCost(next) - designCost(d)) * (tw.costMul ?? 1), total = s.cost + added;
-  const broke = !m.sandbox && total > m.budget;
+  const boostDay = (next.doses - 1) * DOSE_GAP;
+  const tooLate = boostDay >= m.challengeDay, tight = !tooLate && m.challengeDay - boostDay < 14;
+  const broke = tooLate || (!m.sandbox && total > m.budget);
   const ab = s.ab(VAX_CHECKPOINT), tc = s.tc(VAX_CHECKPOINT);
   const level = v => v < .25 ? 'Low' : v < .5 ? 'Moderate' : 'High';
   // the lab gives a typical range, not the answer: the player weighs it against the limit
@@ -2466,9 +2578,10 @@ function vaxCheckpoint() {
     <p class="cp-note">Antibodies peak about two weeks after a dose, then fade, and they have to hold until day ${m.challengeDay}. A booster lifts and extends them, but each extra dose usually adds about ${lo}–${hi}% to the reaction score. If reactions pass the limit, the safety board stops the trial.</p>
     <div class="cp-choices">
       <button class="cp-choice" id="cp-keep"><b>Keep the schedule</b><small>${d.doses} dose${d.doses > 1 ? 's' : ''} total, no added risk</small></button>
-      <button class="cp-choice" id="cp-boost" ${broke ? 'disabled' : ''}><b>Add a booster dose</b><small>${broke
-        ? `Not enough budget: +${money(added)} would bring the total to ${money(total)} of $${m.budget}k.`
-        : `Dose ${next.doses} on day ${(next.doses - 1) * DOSE_GAP} · +${money(added)} (total ${money(total)}${m.sandbox ? '' : ` of $${m.budget}k`})`}</small></button>
+      <button class="cp-choice" id="cp-boost" ${broke ? 'disabled' : ''}><b>Add a booster dose</b><small>${tooLate
+        ? `Too late: dose ${next.doses} would land on day ${boostDay}, after exposure on day ${m.challengeDay}.`
+        : broke ? `Not enough budget: +${money(added)} would bring the total to ${money(total)} of $${m.budget}k.`
+        : `Dose ${next.doses} on day ${boostDay} · +${money(added)} (total ${money(total)}${m.sandbox ? '' : ` of $${m.budget}k`})${tight ? ` · only ${m.challengeDay - boostDay} days before exposure, so it won't fully peak` : ''}`}</small></button>
     </div>`);
   $('cp-keep').onclick = () => {
     // keep the booster as a what-if for the debrief comparison
@@ -2857,7 +2970,7 @@ function challengeResultHtml(m, s, newly) {
 // Before a new design runs, the player guesses what will limit it; the debrief grades the guess.
 const PREDICT_OPTS = {
   vax: [['strength', 'Too weak', 'Not enough antibodies, even at their peak'], ['durability', 'Fades too soon', 'Immunity won\u2019t last until exposure'],
-    ['side', 'Side effects', 'Reactions pass the safety limit'], ['none', 'Nothing', 'It\u2019ll pass']],
+    ['timing', 'Too late', 'Exposure comes before immunity has built up'], ['side', 'Side effects', 'Reactions pass the safety limit'], ['none', 'Nothing', 'It\u2019ll pass']],
   tx: [['wrong', 'Wrong drug', 'This kind of drug can\u2019t touch this bug'], ['resistance', 'Resistance', 'The microbes adapt to the drug'],
     ['short', 'Not enough drug', 'Too short, too weak or gaps between doses'], ['side', 'Side effects', 'Too harsh for the patient'], ['none', 'Nothing', 'It\u2019ll work']],
 };
@@ -2911,11 +3024,33 @@ function recordAttempt(m, s) {
   list.unshift({
     plan: m.kind ? { ...trial.rx } : { ...trial.startDesign },
     change: m.kind ? (trial.changeRx ? { day: trial.changeDay, rx: { ...trial.changeRx } } : null) : (trial.baseSim ? { day: VAX_CHECKPOINT } : null),
-    pathogen: m.pathogen,
-    res: { success: s.success, stars: s.stars, headline, side: s.side, cost: s.cost },
+    pathogen: m.pathogen, wait: m.wait,
+    res: { success: s.success, stars: s.stars, headline, side: s.side, cost: s.cost, protection: m.kind ? undefined : (s.halted ? 0 : s.protection) },
   });
   list.length = Math.min(list.length, ATTEMPTS_KEPT);
   persist();
+}
+// On the results screen: what changed since the previous try at this same mission, and what it did.
+function lastAttemptHtml(m) {
+  const [now, prev] = attemptsFor(m);
+  if (!prev || prev.pathogen !== now.pathogen) return '';
+  const label = { carrier: 'Carrier', antigen: 'Antigen', adjuvant: 'Adjuvant', route: 'Delivery', doses: 'Doses', a: 'Drug', b: 'Second drug', dose: 'Dose', freq: 'Per day', dur: 'Course' };
+  const show = (k, v) => v == null ? 'none' : k === 'doses' ? String(v) : k === 'freq' ? `${v}×` : k === 'dur' ? `${v} days`
+    : k === 'dose' ? DOSE_LV[v].name : k === 'a' || k === 'b' ? DRUG(v).name : part(k, v).name;
+  const keys = m.kind ? ['a', 'b', 'dose', 'freq', 'dur'] : ['carrier', 'antigen', 'adjuvant', 'route', 'doses'];
+  const changes = keys.filter(k => (prev.plan[k] ?? null) !== (now.plan[k] ?? null)).map(k => `${label[k]}: ${show(k, prev.plan[k])} → <b>${show(k, now.plan[k])}</b>`);
+  if (now.wait && prev.wait && now.wait !== prev.wait) changes.unshift(`Timing: ${RB_WAITS[prev.wait].label} → <b>${RB_WAITS[now.wait].label}</b>`);
+  if (!!prev.change !== !!now.change) changes.push(`Checkpoint: ${prev.change ? 'changed plan' : 'kept plan'} → <b>${now.change ? 'changed plan' : 'kept plan'}</b>`);
+  // green when the number moved the good way
+  const move = (a, b, fmt, upIsGood) => {
+    const cls = Math.abs(b - a) < 1e-9 ? '' : (b > a) === upIsGood ? 'ok' : 'no';
+    return `<span class="${cls}">${fmt(a)} → ${fmt(b)}</span>`;
+  };
+  const effects = [`Result: ${prev.res.success ? '✓' : '✗'} ${prev.res.headline} → <b class="${now.res.success ? 'ok' : 'no'}">${now.res.success ? '✓' : '✗'} ${now.res.headline}</b>`];
+  if (!m.kind && prev.res.protection != null && now.res.protection != null) effects.push(`Protection ${move(prev.res.protection, now.res.protection, pctP, true)}`);
+  effects.push(`Side effects ${move(prev.res.side, now.res.side, pct, false)}`, `Cost ${move(prev.res.cost, now.res.cost, money, false)}`);
+  return `<h3 class="sub">Compared with your last attempt</h3>
+    <div class="last-cmp"><div><b>What changed:</b> ${changes.length ? changes.join(' · ') : 'nothing: the same plan as last time'}</div><div><b>Effect:</b> ${effects.join(' · ')}</div></div>`;
 }
 function attemptsHtml(m) {
   const list = attemptsFor(m);
@@ -3038,7 +3173,7 @@ function compareHtml(s, m) {
     <table class="cmp">${head}${body}</table>${summary ? `<p class="cmp-sum">${[changeVerdict(s), summary].filter(Boolean).join(' ')}</p>` : ''}`;
 }
 function breakdownHtml(s) {
-  const weakest = s.breakdown.slice().sort((a, b) => a.value - b.value)[0];
+  const weakest = s.breakdown.find(b => b.key === s.clueKey) || s.breakdown.slice().sort((a, b) => a.value - b.value)[0];
   const rows = s.breakdown.map(b => {
     const color = b.value < .5 ? 'var(--bad)' : b.value < .75 ? 'var(--warn)' : 'var(--good)';
     return `<div class="bd-row ${b === weakest ? 'weak' : ''}"><div><b>${b.label}</b><small>${b.why}</small></div>${bar(b.value, color)}<span>${b.show}</span></div>`;
@@ -3086,6 +3221,7 @@ function showResult() {
     <h3 class="sub">Debrief</h3>
     <ul class="notes">${notes.map(n => `<li>${n}</li>`).join('')}</ul>
     ${challengeResultHtml(m, s, newly)}
+    ${lastAttemptHtml(m)}
     ${compareHtml(s, m)}
     ${!tx && !s.halted ? breakdownHtml(s) : ''}
     ${m.sandbox || m.outbreak ? '' : `<p style="color:var(--sci);margin:0 0 16px">+${earned} ⚗ science${s.success ? '' : ' (failures are data too)'}</p>`}

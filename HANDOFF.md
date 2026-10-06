@@ -19,6 +19,9 @@ Built with Claude Code in one session. All of it works and was played through in
 | Challenges | Click a challenge in the lab to target it: its limit appears on the cost or side-effect meter with an on-track note. Each mission has 2 optional challenges (e.g. "Spend $30k or less", "Clear the infection by day 4"). A star per challenge, +10 ⚗ the first time. They replaced the old bonus stars, which were impossible in 3 vaccine missions and automatic in treatments. |
 | Tissue damage | The infected tissue swells, darkens and grows sores as the infection does harm, then heals. Shown as "43% damaged · worsening/healing" with symptoms per tissue type (lungs also get an oxygen reading and log entries when it drops and recovers). Clickable. Vaccine trials show "a typical volunteer". |
 | Predictions | Before a new design runs, the player guesses what will limit it. The debrief grades the guess with the real reason and keeps a streak. Skippable, and can be turned off in Mission Control. |
+| Planning help | Outbreak labs preview what a plan leaves for the next chapter (or the end), warning below the $60k grant floor. Vaccine labs warn when a dose would land after exposure, or too close to it to peak. |
+| Retry comparison | The results screen compares each attempt with the previous one at the same mission or chapter: what changed, and its effect on result, protection, side effects and cost. |
+| Outbreak Mastery | ⭐ on the story card for protecting the town in both waves without emergency funding. The town report names the decision that mattered most by replaying your chapter 3 plan under alternative histories. |
 | No-WebGL fallback | Shows a notice and the game still runs. |
 | Mobile layout | Works at phone width (panels stack). |
 | GitHub | Public repo https://github.com/soulfulnevada/immunaut-program, branch `main`. |

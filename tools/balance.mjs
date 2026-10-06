@@ -8,7 +8,7 @@ const between = (a, b) => html.slice(html.indexOf(a), html.indexOf(b));
 const src = ['MODEL', 'TX-MODEL', 'OUTBREAK-MODEL'].map(k => between(`// ${k}-START`, `// ${k}-END`)).join('\n');
 const M = new Function(src + `return { PARTS, MISSIONS, simulate, DRUGS, TX_MISSIONS, simulateTx, txCheckpointDay, challengeMet, CHALLENGE_TEXT,
   OUTBREAK, OB_WAVES, obCh2Mission, obCh3TxMission, obCh3VaxMission, obCarry, obResistAfter, obCommendation, obResistContained, obAfterCh2, obFinish,
-  RIVERBEND, RB_WAITS, RB_WAVES, rbCh2Mission, rbCh3Mission, rbAfterCh2, rbFinish };`)();
+  RIVERBEND, RB_WAITS, RB_WAVES, rbCh2Mission, rbCh3Mission, rbAfterCh2, rbFinish, obMastered, obWhatIf, rbWhatIf, mostImportant };`)();
 
 const starter = list => list.filter(p => p.unlock === 0).map(p => p.id);
 const every = list => list.map(p => p.id);
@@ -148,6 +148,12 @@ const PREDICT = [
   ['t2 antibiotic for flu is the wrong drug', () => tx('t2', { a: 'pen', dose: 'std', freq: 3, dur: 7 }), 'wrong'],
   ['t3 penicillin loses to resistance', () => tx('t3', { a: 'pen', dose: 'std', freq: 3, dur: 10 }), 'resistance'],
   ['t3 broad-spectrum is too harsh', () => tx('t3', { a: 'broad', dose: 'std', freq: 1, dur: 10 }), 'side'],
+  // exposure before antibodies peak is "too late", not "faded": the fix is time, not more doses
+  ['riverbend wait-4-weeks with 3 doses is too late, not faded', () => M.simulate({ carrier: 'inactivated', antigen: 'core', adjuvant: 'none', route: 'im', doses: 3 }, M.rbCh2Mission('w4', 140)).limiter, 'timing'],
+  ['a dose after exposure adds nothing: 3 doses protect exactly as well as 2 when the third lands too late', () => {
+    const m = M.rbCh2Mission('w4', 140), d = { carrier: 'vector', antigen: 'core', adjuvant: 'none', route: 'nasal' };
+    return M.simulate({ ...d, doses: 3 }, m).protection === M.simulate({ ...d, doses: 2 }, m).protection ? 'same' : 'different';
+  }, 'same'],
   // graded on the biology: a useless drug is "wrong drug" even when the immune system wins alone
   ['antibiotic for a mild virus is still the wrong drug', () => M.simulateTx({ a: 'pen', b: null, dose: 'std', freq: 3, dur: 7 }, mild).limiter, 'wrong'],
   ['a useless drug riding along in a winning combo is half right', () => { const s = M.simulateTx({ a: 'pen', b: 'polym', dose: 'std', freq: 2, dur: 5 }, flu); return s.limiter === 'none' && s.wrongToo ? 'half' : 'no'; }, 'half'],
@@ -300,6 +306,54 @@ console.log('\nRIVERBEND CHECKS');
   const rbFile = kinds => Object.fromEntries(M.RIVERBEND.tests.map((t, i) => [t.field, kinds[i] === 'read' ? { tested: true, value: M.RIVERBEND.truth[t.field] } : {}]));
   ob(M.obCommendation(rbFile(['read', 'read', 'read', 'read', 'read']), M.RIVERBEND).tier === 'gold' && M.obCommendation(rbFile([]), M.RIVERBEND).tier === null,
     'commendation scoring works on Riverbend\'s own tests');
+}
+
+
+// Outbreak Mastery: both waves protected with no emergency grant must be reachable in every story,
+// and the "decision that mattered most" replay must find the real turning point in a botched run.
+console.log('\nMASTERY CHECKS');
+{
+  // Harbor: Growth Blocker cures the first wave cleanly, and again in the small second wave
+  const tests = 10, rx = { a: 'tetra', b: null, dose: 'std', freq: 1, dur: 10 };
+  const m2 = M.obCh2Mission(M.OUTBREAK.budget - tests), s2 = M.simulateTx(rx, m2);
+  const run = { spent: { tests, ch2: 0, ch3: 0 }, file: {} }, n2 = M.obAfterCh2(run, s2, m2);
+  const run3 = { ...run, spent: { tests, ch2: s2.cost, ch3: 0 }, ch2: n2.ch2, grant: n2.grant };
+  const s3 = M.simulateTx(rx, M.obCh3TxMission(n2.ch2, M.OUTBREAK.budget - tests - s2.cost));
+  ob(M.obMastered({ ...run3, ch3: { success: s3.success } }), 'Harbor Fever can be mastered (Growth Blocker in both waves, no grant)');
+  // a botched Harbor run: penicillin breeds resistance and a large wave, then penicillin again fails; the replay should blame chapter 2
+  const pen = { a: 'pen', b: null, dose: 'std', freq: 3, dur: 10 }, sp = M.simulateTx(pen, m2), np = M.obAfterCh2(run, sp, m2);
+  const botched = { ch2: np.ch2, ch3Plan: { route: 'tx', rx: { a: 'tetra', b: null, dose: 'low', freq: 2, dur: 5 } } };
+  const w = M.obWhatIf(botched), top = M.mostImportant(w);
+  ob(!w.actual.res.success && top && top.res.success, `Harbor what-if finds the turning point in a botched run (${top ? top.what : 'none'})`);
+}
+{
+  // Riverbend: ship now with a 3-dose conserved-core vaccine, then a winter vaccine; no grant
+  const tests = 10, d2 = { carrier: 'inactivated', antigen: 'core', adjuvant: 'none', route: 'im', doses: 3 };
+  const m2 = M.rbCh2Mission('now', M.RIVERBEND.budget - tests), s2 = M.simulate(d2, m2);
+  const run = { spent: { tests, ch2: 0, ch3: 0 }, file: {} }, n2 = M.rbAfterCh2(run, s2, m2, d2);
+  const left = M.RIVERBEND.budget - tests - s2.cost, m3 = M.rbCh3Mission(n2.ch2, left);
+  let mastered = false;
+  for (const carrier of allIds(M.PARTS.carrier)) for (const antigen of allIds(M.PARTS.antigen)) for (const adjuvant of allIds(M.PARTS.adjuvant))
+    for (const route of allIds(M.PARTS.route)) for (const doses of [1, 2, 3]) {
+      const s3 = M.simulate({ carrier, antigen, adjuvant, route, doses }, m3);
+      if (s3.success && s3.cost <= left && M.obMastered({ ch2: n2.ch2, ch3: { success: true }, grant: n2.grant })) mastered = true;
+    }
+  ob(mastered, 'Riverbend Flu can be mastered (ship now with a 3-dose core vaccine, then a winter vaccine, no grant)');
+  // a botched Riverbend run: a spike vaccine with "wait 4 weeks" misses (large wave + escape); find a winter plan the replay can rescue
+  const spike = { carrier: 'vector', antigen: 'spike', adjuvant: 'none', route: 'nasal', doses: 3 };
+  const mb = M.rbCh2Mission('w4', 140), sb = M.simulate(spike, mb), nb = M.rbAfterCh2(run, sb, mb, spike);
+  let found = null;
+  for (const carrier of allIds(M.PARTS.carrier)) for (const antigen of allIds(M.PARTS.antigen)) for (const doses of [1, 2, 3]) {
+    if (found) break;
+    const p3 = { route: 'vax', design: { carrier, antigen, adjuvant: 'alum', route: 'nasal', doses } };
+    const w = M.rbWhatIf({ ch2: nb.ch2, ch2Plan: { design: spike }, ch3Plan: p3 }), top = M.mostImportant(w);
+    if (!w.actual.res.success && top && top.res.success) found = top.what;
+  }
+  ob(!sb.success && !!found, `Riverbend what-if finds the turning point in a botched run (${found || 'none'})`);
+  // a mastered run must never be told an alternative that loses the first wave is "better"
+  const good = M.rbWhatIf({ ch2: n2.ch2, ch2Plan: { design: d2 }, ch3Plan: { route: 'vax', design: { carrier: 'vector', antigen: 'core', adjuvant: 'alum', route: 'nasal', doses: 1 } } });
+  const best = M.mostImportant(good);
+  ob(!best || best.ch2ok, `what-if never prefers an alternative that loses the first wave (${best ? best.what : 'nothing better'})`);
 }
 
 process.exitCode = broken ? 1 : 0;
