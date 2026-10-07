@@ -183,6 +183,9 @@
   .clue { background: #4fd1ff12; border: 1px solid #4fd1ff44; border-radius: 10px; padding: 10px 12px; margin-bottom: 14px; font-size: 13px; color: #d6e6fb; }
   .clue b { display: block; color: var(--accent); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 2px; }
   .modal.cp { background: #05080f66; }
+  #ask .card2 { width: min(440px, 100%); }
+  #ask p { color: #c9d5ea; line-height: 1.5; margin: 8px 0 16px; }
+  #ask .btns { display: flex; gap: 8px; justify-content: flex-end; }
   .cmp { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 6px; }
   .cmp th, .cmp td { padding: 6px 8px; text-align: left; border-bottom: 1px solid #ffffff10; }
   .cmp th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
@@ -430,6 +433,7 @@
 <div id="result" class="modal hidden"><div class="card2" id="result-body"></div></div>
 <div id="predict" class="modal hidden"><div class="card2" id="predict-body"></div></div>
 <div id="compare" class="modal hidden"><div class="card2" id="compare-body"></div></div>
+<div id="ask" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="ask-title"><div class="card2" id="ask-body"></div></div>
 <div id="checkpoint" class="modal hidden cp"><div class="card2" id="cp-body"></div></div>
 <div id="no3d" class="hidden">3D view unavailable: this browser has WebGL graphics turned off. The game still plays, but turn on hardware acceleration to watch the battle.</div>
 
@@ -1962,13 +1966,29 @@ function obStart() {
   st.snaps = { 1: clone(st.run) };
   persist();
 }
+// An in-game yes/no box. The browser's own confirm() pops up outside the game, and automated testers can't click it.
+function askConfirm(title, text, yesLabel, onYes) {
+  $('ask-body').innerHTML = `<h2 id="ask-title">${title}</h2><p>${text}</p>
+    <div class="btns"><button class="ghost" id="ask-no">Cancel</button><button class="primary" id="ask-yes">${yesLabel}</button></div>`;
+  const close = () => { $('ask').classList.add('hidden'); document.removeEventListener('keydown', key); };
+  const key = e => { if (e.key === 'Escape') close(); };
+  $('ask-no').onclick = close;
+  $('ask-yes').onclick = () => { close(); onYes(); };
+  $('ask').onclick = e => { if (e.target === $('ask')) close(); };
+  document.addEventListener('keydown', key);
+  $('ask').classList.remove('hidden');
+  $('ask-yes').focus();
+}
 // Replaying a chapter starts a new branch from its snapshot: everything after it is discarded.
 function obReplay(n) {
   const st = obState();
-  if (!st.snaps[n] || !confirm(`Replaying chapter ${n} replaces everything after it in this run. Continue?`)) return;
-  st.run = clone(st.snaps[n]);
-  for (const k of Object.keys(st.snaps)) if (+k > n) delete st.snaps[k];
-  persist(); renderOutbreak();
+  if (!st.snaps[n]) return;
+  const later = n === 1 ? 'your case file, chapters 2 and 3 and the town report' : n === 2 ? 'chapter 3 and the town report' : 'the town report';
+  askConfirm(`Replay chapter ${n}?`, `This run goes back to the start of chapter ${n}, and ${later} will be replaced. Your past attempts stay in the lab's attempt list, and anything you've earned stays earned.`, `↺ Replay chapter ${n}`, () => {
+    st.run = clone(st.snaps[n]);
+    for (const k of Object.keys(st.snaps)) if (+k > n) delete st.snaps[k];
+    persist(); renderOutbreak();
+  });
 }
 // The case file as recorded: lab-tech results, the player's readings, guesses and untested fields all read differently.
 const obOption = (t, v) => t.options.find(o => o[0] === v)[1];

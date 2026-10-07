@@ -51,5 +51,6 @@ For current status, the Netlify deploy, and the idea backlog, read [`HANDOFF.md`
 - Single-quoted JS strings break on apostrophes ("there's"). Use double quotes or rephrase, then run `node --check` on the extracted script when editing via scripts.
 - The player-entered pathogen name reaches `innerHTML`, so `<>&"` get stripped on input. Do the same for any new free-text field.
 - A hidden browser tab pauses `requestAnimationFrame`, so trials freeze in background or headless previews. For automated testing, temporarily expose `frame` and swap in a `setTimeout`-based rAF, then remove the hook before committing.
+- Never use the browser's `confirm()` / `alert()`: they block automated testers and look out of place. Use `askConfirm(title, text, yesLabel, onYes)`, the in-game box (Escape or Cancel closes it).
 - The game opens on a title screen (`mode === 'title'`, `showTitle` / `leaveTitle`). Automated tests click `#title-play` (or press Enter) before driving Mission Control.
 - Testing in a browser that holds Jacob's save: back up `immunaut-save-v1` first and restore it afterwards.
